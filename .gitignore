@@ -1,0 +1,4 @@
+libs/*
+settings.py
+*.pyc
+picture.png

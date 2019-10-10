@@ -1,0 +1,16 @@
+DEBUG = False
+EYEWITNESS_BASICAUTH = False
+EYEWITNESS_PASSWORD = 'pass'
+EYEWITNESS_POLICY = 30
+EYEWITNESS_USERNAME = 'user'
+FREQUENCY_SECOND = 900
+LIST_GROUP_ID = [29, 46, 47, 51, 55, 56]
+PATROWL_APITOKEN = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+PATROWL_ENDPOINT = 'http://localhost'
+SLACK_CHANNEL = '#my-favorite-chan'
+SLACK_ICON_EMOJI = ':sweat_smile:'
+SLACK_LEGACY_TOKEN = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+SLACK_PRETEXT = 'New domain identified'
+SLACK_USERNAME = 'PatrOwl Slack Reporter'
+SLACK_WEBHOOK = 'https://hooks.slack.com/services/XXXXX/YYYYY/zzzzzzzzzzzzzzzz'
+VIRUSTOTAL_POLICY = 38
