@@ -1,0 +1,1 @@
+# patrowl-slack-reporter
