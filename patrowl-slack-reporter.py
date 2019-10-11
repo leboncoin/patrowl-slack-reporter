@@ -173,7 +173,7 @@ def scan():
     eye_scan, eye_scan_id = start_scan('Eyewitness', assets=recent_assets, engine_policy=settings.EYEWITNESS_POLICY)
     vt_scan, vt_scan_id = start_scan('Virustotal', assets=recent_assets, engine_policy=settings.VIRUSTOTAL_POLICY)
 
-    nb_try = 3
+    nb_try = 30 # 10 minutes
     status = {
         'global': 'running',
         settings.EYEWITNESS_POLICY: 'running',
@@ -205,7 +205,7 @@ def scan():
            status[settings.VIRUSTOTAL_POLICY] != 'running' :
             status['global'] = 'finished'
         else:
-            time.sleep(60)
+            time.sleep(20)
             nb_try -= 1
 
     report = dict()
@@ -271,7 +271,7 @@ def slack_alert(report):
 
         req = SESSION.post(settings.SLACK_WEBHOOK, data=json.dumps(payload))
 
-        if 'links' in data:
+        if 'links' in data and data['links']:
             download_picture(data['links'][0])
             upload_picture_on_slack(data['name'])
 
