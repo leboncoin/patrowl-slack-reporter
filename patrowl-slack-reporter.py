@@ -3,16 +3,16 @@
 """ Patrowl Slack Reporter """
 
 # Standard library imports
-from datetime import datetime, timezone
-from dateutil.parser import parse
 import base64
+from datetime import datetime, timezone
 import json
+import logging
 import time
 
 # Third party library imports
-# from libs.Patrowl4py.patrowl4py.api import PatrowlManagerApi
-from requests import Session
+from dateutil.parser import parse
 from patrowl4py.api import PatrowlManagerApi
+from requests import Session
 
 # Own libraries
 import settings
@@ -20,18 +20,24 @@ import settings
 # Debug
 # from pdb import set_trace as st
 
-patrowl_api = PatrowlManagerApi(
+PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_ENDPOINT,
     auth_token=settings.PATROWL_APITOKEN
 )
 
+VERSION = '1.1.0'
+
 VIRUSTOTAL_WHOIS_FIELDS = [
     'Creation Date',
+    'Name Server',
+    'Nserver',
     'Registrant Country',
     'Registrar Abuse Contact Email',
     'Registrar URL',
     'Registrar',
 ]
+
+LOGGER = logging.getLogger('patrowl-slack-reporter')
 
 SESSION = Session()
 
@@ -40,11 +46,11 @@ def get_recent_assets():
     assets_list = []
     assets = list()
     for group_id in settings.LIST_GROUP_ID:
-        assetgroup = patrowl_api.get_assetgroup_by_id(group_id)
+        assetgroup = PATROWL_API.get_assetgroup_by_id(group_id)
         assets += sorted(assetgroup['assets'], key=lambda k: k['id'], reverse=True)
 
     for asset in assets:
-        created_at = patrowl_api.get_asset_by_id(asset['id'])['created_at']
+        created_at = PATROWL_API.get_asset_by_id(asset['id'])['created_at']
         now = datetime.now(timezone.utc).astimezone()
         now.isoformat()
         now = str(now).replace(' ', 'T')
@@ -53,24 +59,26 @@ def get_recent_assets():
         diff = (now - created_at).total_seconds()
         if diff <= settings.FREQUENCY_SECOND:
             assets_list.append(asset)
-            asset = patrowl_api.get_asset_by_id(asset['id'])
+            asset = PATROWL_API.get_asset_by_id(asset['id'])
     return assets_list
 
 
 def start_scan(name, assets, engine_policy):
-    ''' run scan'''
-    scan = patrowl_api.get_scans(title='{} report'.format(name))
+    """
+    run scan
+    """
+    scan = PATROWL_API.get_scans(title='{} report'.format(name))
 
     # Delete old scans which aren't started or enqueued
-    for scan in patrowl_api.get_scan_definitions():
+    for scan in PATROWL_API.get_scan_definitions():
         if scan['title'] == '{} report'.format(name):
             if scan['status'] in ['enqueued', 'started']:
                 return scan['status'], None
-            patrowl_api.delete_scan_definition(scan['id'])
+            PATROWL_API.delete_scan_definition(scan['id'])
 
     retry = False
     try:
-        patrowl_api.add_scan_definition(
+        PATROWL_API.add_scan_definition(
             engine_policy=engine_policy,
             title='{} report'.format(name),
             description='{} report'.format(name),
@@ -82,12 +90,12 @@ def start_scan(name, assets, engine_policy):
 
     # Need to warm up Patrowl sometimes...
     if retry:
-        scan = patrowl_api.get_scans(title='{} report'.format(name))
+        scan = PATROWL_API.get_scans(title='{} report'.format(name))
         if scan:
             for scan_to_delete in scan:
-                patrowl_api.delete_scan_definition(scan_to_delete['scan_definition'])
+                PATROWL_API.delete_scan_definition(scan_to_delete['scan_definition'])
         try:
-            patrowl_api.add_scan_definition(
+            PATROWL_API.add_scan_definition(
                 engine_policy=engine_policy,
                 title='{} report'.format(name),
                 description='{} report'.format(name),
@@ -97,29 +105,33 @@ def start_scan(name, assets, engine_policy):
         except:
             return 'error', None
 
-    new_scan = patrowl_api.get_scans(title='{} report'.format(name))
+    new_scan = PATROWL_API.get_scans(title='{} report'.format(name))
     if new_scan:
         return new_scan[0]['status'], new_scan[0]['id']
     return 'error', None
 
 
 def get_current_status(scan_id):
-    ''' Returns the current status of the scan specified '''
+    """
+    Returns the current status of the scan specified
+    """
     try:
-        res = patrowl_api.get_scan_by_id(scan_id)
+        res = PATROWL_API.get_scan_by_id(scan_id)
     except:
         return 'error'
     if 'detail' in res and res['detail'] == 'Not found.':
         return 'error'
     if 'status' in res and res['status'] in ['error', 'finished']:
         return res['status']
-        return 'finished'
     return 'running'
 
 
 def get_eyewitness_report(scan_id, report):
+    """
+    This function returns the Eyewitness report
+    """
     try:
-        res = patrowl_api.get_scan_by_id(scan_id)
+        res = PATROWL_API.get_scan_by_id(scan_id)
     except:
         return report
     if 'detail' in res and res['detail'] == 'Not found.':
@@ -128,7 +140,7 @@ def get_eyewitness_report(scan_id, report):
         asset_id = asset['id']
         if asset_id not in report:
             report[asset_id] = dict()
-        for finding in patrowl_api.get_asset_findings_by_id(asset_id):
+        for finding in PATROWL_API.get_asset_findings_by_id(asset_id):
             # Get the last screenshot
             if finding['scan'] == scan_id:
                 if 'links' in finding:
@@ -138,8 +150,11 @@ def get_eyewitness_report(scan_id, report):
 
 
 def get_virustotal_report(scan_id, report):
+    """
+    This function returns the VirusTotal report
+    """
     try:
-        res = patrowl_api.get_scan_by_id(scan_id)
+        res = PATROWL_API.get_scan_by_id(scan_id)
     except:
         return report
     if 'detail' in res and res['detail'] == 'Not found.':
@@ -148,7 +163,7 @@ def get_virustotal_report(scan_id, report):
         asset_id = asset['id']
         if asset_id not in report:
             report[asset_id] = dict()
-        for finding in patrowl_api.get_asset_findings_by_id(asset_id):
+        for finding in PATROWL_API.get_asset_findings_by_id(asset_id):
             if finding['type'] == 'domain_whois' and 'whois' not in report:
                 # Gen whois description
                 report[asset_id]['whois'] = dict()
@@ -158,22 +173,27 @@ def get_virustotal_report(scan_id, report):
                     key = data.split(': ')[0]
                     value = data.split(': ')[1]
                     if key != '' and value != '':
-                        report[asset_id]['whois'][key] = value
+                        report[asset_id]['whois'][key.lower()] = value
             if finding['type'] == 'subdomain_list' and 'subdomain_list' not in report:
                 report[asset_id]['subdomain_list'] = finding['raw_data']['subdomain_list']
     return report
 
 
 def scan():
+    """
+    This is the main function
+    """
+    LOGGER.warning('Start scan')
     recent_assets = get_recent_assets()
 
     if not recent_assets:
+        LOGGER.warning('no assets')
         return dict()
 
     eye_scan, eye_scan_id = start_scan('Eyewitness', assets=recent_assets, engine_policy=settings.EYEWITNESS_POLICY)
     vt_scan, vt_scan_id = start_scan('Virustotal', assets=recent_assets, engine_policy=settings.VIRUSTOTAL_POLICY)
 
-    nb_try = 30 # 10 minutes
+    nb_try = 39 # 13mn
     status = {
         'global': 'running',
         settings.EYEWITNESS_POLICY: 'running',
@@ -202,16 +222,14 @@ def scan():
 
         # Update global status
         if status[settings.EYEWITNESS_POLICY] != 'running' and \
-           status[settings.VIRUSTOTAL_POLICY] != 'running' :
+           status[settings.VIRUSTOTAL_POLICY] != 'running':
             status['global'] = 'finished'
         else:
+            LOGGER.warning('global status: %s', status)
             time.sleep(20)
             nb_try -= 1
 
     report = dict()
-
-    if status['global'] != 'finished':
-        return report
 
     # Gen report
     for asset in recent_assets:
@@ -226,10 +244,15 @@ def scan():
     if status[settings.VIRUSTOTAL_POLICY] == 'finished':
         report = get_virustotal_report(vt_scan_id, report)
 
+    LOGGER.warning('Report Done')
+
     return report
 
 
 def download_picture(url):
+    """
+    This function upload the screenshot from Eyewitness
+    """
     if settings.EYEWITNESS_BASICAUTH:
         data = base64.b64encode('{}:{}'.format(settings.EYEWITNESS_USERNAME, settings.EYEWITNESS_PASSWORD).encode('utf-8')).decode()
         req = SESSION.get(url, headers={'Authorization': 'Basic {}'.format(data)})
@@ -240,18 +263,23 @@ def download_picture(url):
 
 
 def upload_picture_on_slack(title):
-    my_file = { 'file' : ('picture.png', open('picture.png', 'rb'), 'png') }
-    payload={
-        'filename': '{}.png'.format(title), 
+    """
+    This function upload a picture on Slack
+    """
+    my_file = {'file' : ('picture.png', open('picture.png', 'rb'), 'png')}
+    payload = {
+        'filename': '{}.png'.format(title),
         'token': settings.SLACK_LEGACY_TOKEN,
         'channels': settings.SLACK_CHANNEL
     }
-    req = SESSION.post("https://slack.com/api/files.upload", params=payload, files=my_file)
+    SESSION.post('https://slack.com/api/files.upload', params=payload, files=my_file)
 
 
 def slack_alert(report):
-    ''' Post report on slack '''
-    for (key, data) in report.items():
+    """
+    Post report on Slack
+    """
+    for (_, data) in report.items():
         payload = dict()
         payload['channel'] = settings.SLACK_CHANNEL
         payload['link_names'] = 1
@@ -264,12 +292,12 @@ def slack_alert(report):
         attachments['fields'] = []
 
         for whois_field in VIRUSTOTAL_WHOIS_FIELDS:
-            if 'whois' in data and whois_field in data['whois']:
-                attachments['fields'].append({'title': whois_field, 'value': data['whois'][whois_field], 'short': False})
+            if 'whois' in data and whois_field.lower() in data['whois']:
+                attachments['fields'].append({'title': whois_field, 'value': data['whois'][whois_field.lower()], 'short': False})
 
         payload['attachments'] = [attachments]
 
-        req = SESSION.post(settings.SLACK_WEBHOOK, data=json.dumps(payload))
+        SESSION.post(settings.SLACK_WEBHOOK, data=json.dumps(payload))
 
         if 'links' in data and data['links']:
             download_picture(data['links'][0])
