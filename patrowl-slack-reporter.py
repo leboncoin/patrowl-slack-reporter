@@ -25,7 +25,7 @@ PATROWL_API = PatrowlManagerApi(
     auth_token=settings.PATROWL_APITOKEN
 )
 
-VERSION = '1.1.0'
+VERSION = '1.2.0'
 
 VIRUSTOTAL_WHOIS_FIELDS = [
     'Creation Date',
@@ -35,6 +35,9 @@ VIRUSTOTAL_WHOIS_FIELDS = [
     'Registrar Abuse Contact Email',
     'Registrar URL',
     'Registrar',
+]
+WARNINGS_TYPE_WHITELIST = [
+    'certstream_report',
 ]
 
 LOGGER = logging.getLogger('patrowl-slack-reporter')
@@ -163,6 +166,8 @@ def get_virustotal_report(scan_id, report):
         asset_id = asset['id']
         if asset_id not in report:
             report[asset_id] = dict()
+        if 'warnings' not in report[asset_id]:
+            report[asset_id]['warnings'] = dict()
         for finding in PATROWL_API.get_asset_findings_by_id(asset_id):
             if finding['type'] == 'domain_whois' and 'whois' not in report:
                 # Gen whois description
@@ -176,6 +181,9 @@ def get_virustotal_report(scan_id, report):
                         report[asset_id]['whois'][key.lower()] = value
             if finding['type'] == 'subdomain_list' and 'subdomain_list' not in report:
                 report[asset_id]['subdomain_list'] = finding['raw_data']['subdomain_list']
+            # If Severity is higher than 'Low', report it
+            if finding['severity_num'] > 1:
+                report[asset_id]['warnings'][finding['type']] = finding
     return report
 
 
@@ -294,6 +302,16 @@ def slack_alert(report):
         for whois_field in VIRUSTOTAL_WHOIS_FIELDS:
             if 'whois' in data and whois_field.lower() in data['whois']:
                 attachments['fields'].append({'title': whois_field, 'value': data['whois'][whois_field.lower()], 'short': False})
+
+        for warning in data['warnings']:
+            if warning not in WARNINGS_TYPE_WHITELIST:
+                attachments['color'] = 'warning'
+                link = 'No link available'
+                if 'links' in data['warnings'][warning] and data['warnings'][warning]['links']:
+                    link = data['warnings'][warning]['links'][0]
+                attachments['fields'].append({'title': 'Severity {}: {}'.format(data['warnings'][warning]['severity_num'], data['warnings'][warning]['title'].replace('.', '[.]')),
+                                              'value': link,
+                                              'short': False})
 
         payload['attachments'] = [attachments]
 
