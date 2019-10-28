@@ -4,6 +4,16 @@ CHANGELOG
 Patrowl Slack Reporter
 -----
 
+1.2.0
+-----
+
+2019/10/28
+
+### Features
+
+  - Report VT findings higher than LOW
+
+
 1.1.0
 -----
 
