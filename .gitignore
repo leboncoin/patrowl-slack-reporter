@@ -2,3 +2,5 @@ libs/*
 settings.py
 *.pyc
 picture.png
+build/*
+patrowl_slack_alert.zip

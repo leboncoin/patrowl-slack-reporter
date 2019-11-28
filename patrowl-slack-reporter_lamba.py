@@ -7,24 +7,41 @@ from datetime import datetime, timezone
 import base64
 import json
 import logging
+import os
+import sys
 import time
 
 # Third party library imports
+sys.path.append('package')
 from dateutil.parser import parse
 from patrowl4py.api import PatrowlManagerApi
 from requests import Session
-
-# Own libraries
-import settings
 
 # Debug
 # from pdb import set_trace as st
 
 VERSION = '1.3.0'
 
+DEBUG = os.environ['DEBUG'] == 'True'
+EYEWITNESS_BASICAUTH = os.environ['EYEWITNESS_BASICAUTH'] == 'True'
+EYEWITNESS_PASSWORD = os.environ['EYEWITNESS_PASSWORD']
+EYEWITNESS_POLICY = int(os.environ['EYEWITNESS_POLICY'])
+EYEWITNESS_USERNAME = os.environ['EYEWITNESS_USERNAME']
+FREQUENCY_SECOND = int(os.environ['FREQUENCY_SECOND'])
+LIST_GROUP_ID = os.environ['LIST_GROUP_ID'].split(',')
+PATROWL_APITOKEN = os.environ['PATROWL_APITOKEN']
+PATROWL_ENDPOINT = os.environ['PATROWL_ENDPOINT']
+SLACK_CHANNEL = os.environ['SLACK_CHANNEL']
+SLACK_ICON_EMOJI = os.environ['SLACK_ICON_EMOJI']
+SLACK_LEGACY_TOKEN = os.environ['SLACK_LEGACY_TOKEN']
+SLACK_PRETEXT = os.environ['SLACK_PRETEXT']
+SLACK_USERNAME = os.environ['SLACK_USERNAME']
+SLACK_WEBHOOK = os.environ['SLACK_WEBHOOK']
+VIRUSTOTAL_POLICY = int(os.environ['VIRUSTOTAL_POLICY'])
+
 PATROWL_API = PatrowlManagerApi(
-    url=settings.PATROWL_ENDPOINT,
-    auth_token=settings.PATROWL_APITOKEN
+    url=PATROWL_ENDPOINT,
+    auth_token=PATROWL_APITOKEN
 )
 
 VIRUSTOTAL_WHOIS_FIELDS = [
@@ -50,8 +67,8 @@ def get_recent_assets():
     """
     assets_list = []
     assets = list()
-    for group_id in settings.LIST_GROUP_ID:
-        assetgroup = PATROWL_API.get_assetgroup_by_id(group_id)
+    for group_id in LIST_GROUP_ID:
+        assetgroup = PATROWL_API.get_assetgroup_by_id(int(group_id))
         assets += sorted(assetgroup['assets'], key=lambda k: k['id'], reverse=True)
 
     for asset in assets:
@@ -62,7 +79,7 @@ def get_recent_assets():
         now = parse(now)
         created_at = parse(created_at)
         diff = (now - created_at).total_seconds()
-        if diff <= settings.FREQUENCY_SECOND:
+        if diff <= FREQUENCY_SECOND:
             assets_list.append(asset)
     return assets_list
 
@@ -73,7 +90,7 @@ def get_recent_assets_severity(severity):
     """
     assets_list = []
     assets = list()
-    for group_id in settings.LIST_GROUP_ID:
+    for group_id in LIST_GROUP_ID:
         assetgroup = PATROWL_API.get_assetgroup_by_id(group_id)
         assets += sorted(assetgroup['assets'], key=lambda k: k['id'], reverse=True)
 
@@ -84,7 +101,7 @@ def get_recent_assets_severity(severity):
         now = parse(now)
         for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
             diff = (now - parse(finding['found_at'])).total_seconds()
-            if finding['severity'] == severity and diff <= settings.FREQUENCY_SECOND:
+            if finding['severity'] == severity and diff <= FREQUENCY_SECOND:
                 assets_list.append(asset)
                 break
     return assets_list
@@ -222,39 +239,39 @@ def scan():
     if not recent_assets:
         LOGGER.warning('no assets')
         return dict()
-    eye_scan, eye_scan_id = start_scan('Eyewitness', assets=recent_assets, engine_policy=settings.EYEWITNESS_POLICY)
-    vt_scan, vt_scan_id = start_scan('Virustotal', assets=recent_assets, engine_policy=settings.VIRUSTOTAL_POLICY)
+    eye_scan, eye_scan_id = start_scan('Eyewitness', assets=recent_assets, engine_policy=EYEWITNESS_POLICY)
+    vt_scan, vt_scan_id = start_scan('Virustotal', assets=recent_assets, engine_policy=VIRUSTOTAL_POLICY)
 
     nb_try = 39 # 13mn
     status = {
         'global': 'running',
-        settings.EYEWITNESS_POLICY: 'running',
-        settings.VIRUSTOTAL_POLICY: 'running'
+        EYEWITNESS_POLICY: 'running',
+        VIRUSTOTAL_POLICY: 'running'
     }
     while nb_try > 0 and status['global'] == 'running':
 
         # Eyewitness
-        if status[settings.EYEWITNESS_POLICY] == 'running':
+        if status[EYEWITNESS_POLICY] == 'running':
             if eye_scan in ['error', 'finished']:
-                status[settings.EYEWITNESS_POLICY] = eye_scan
+                status[EYEWITNESS_POLICY] = eye_scan
             else:
-                status[settings.EYEWITNESS_POLICY] = get_current_status(eye_scan_id)
+                status[EYEWITNESS_POLICY] = get_current_status(eye_scan_id)
                 # Retry
-                if status[settings.EYEWITNESS_POLICY] == 'error':
-                    status[settings.EYEWITNESS_POLICY] = get_current_status(eye_scan_id)
+                if status[EYEWITNESS_POLICY] == 'error':
+                    status[EYEWITNESS_POLICY] = get_current_status(eye_scan_id)
         # Virustotal
-        if status[settings.VIRUSTOTAL_POLICY] == 'running':
+        if status[VIRUSTOTAL_POLICY] == 'running':
             if vt_scan in ['error', 'finished']:
-                status[settings.VIRUSTOTAL_POLICY] = vt_scan
+                status[VIRUSTOTAL_POLICY] = vt_scan
             else:
-                status[settings.VIRUSTOTAL_POLICY] = get_current_status(vt_scan_id)
+                status[VIRUSTOTAL_POLICY] = get_current_status(vt_scan_id)
                 # Retry
-                if status[settings.VIRUSTOTAL_POLICY] == 'error':
-                    status[settings.VIRUSTOTAL_POLICY] = get_current_status(vt_scan_id)
+                if status[VIRUSTOTAL_POLICY] == 'error':
+                    status[VIRUSTOTAL_POLICY] = get_current_status(vt_scan_id)
 
         # Update global status
-        if status[settings.EYEWITNESS_POLICY] != 'running' and \
-           status[settings.VIRUSTOTAL_POLICY] != 'running':
+        if status[EYEWITNESS_POLICY] != 'running' and \
+           status[VIRUSTOTAL_POLICY] != 'running':
             status['global'] = 'finished'
         else:
             LOGGER.warning('global status: %s', status)
@@ -269,11 +286,11 @@ def scan():
         report[asset['id']]['name'] = asset['name']
 
     # Eyewitness
-    if status[settings.EYEWITNESS_POLICY] == 'finished':
+    if status[EYEWITNESS_POLICY] == 'finished':
         report = get_eyewitness_report(eye_scan_id, report)
 
     # Virustotal
-    if status[settings.VIRUSTOTAL_POLICY] == 'finished':
+    if status[VIRUSTOTAL_POLICY] == 'finished':
         report = get_virustotal_report(vt_scan_id, report)
 
     LOGGER.warning('Report Done')
@@ -285,8 +302,8 @@ def download_picture(url):
     """
     This function upload the screenshot from Eyewitness
     """
-    if settings.EYEWITNESS_BASICAUTH:
-        data = base64.b64encode('{}:{}'.format(settings.EYEWITNESS_USERNAME, settings.EYEWITNESS_PASSWORD).encode('utf-8')).decode()
+    if EYEWITNESS_BASICAUTH:
+        data = base64.b64encode('{}:{}'.format(EYEWITNESS_USERNAME, EYEWITNESS_PASSWORD).encode('utf-8')).decode()
         req = SESSION.get(url, headers={'Authorization': 'Basic {}'.format(data)})
     else:
         req = SESSION.get(url)
@@ -301,8 +318,8 @@ def upload_picture_on_slack(title):
     my_file = {'file' : ('picture.png', open('picture.png', 'rb'), 'png')}
     payload = {
         'filename': '{}.png'.format(title),
-        'token': settings.SLACK_LEGACY_TOKEN,
-        'channels': settings.SLACK_CHANNEL
+        'token': SLACK_LEGACY_TOKEN,
+        'channels': SLACK_CHANNEL
     }
     SESSION.post('https://slack.com/api/files.upload', params=payload, files=my_file)
 
@@ -313,13 +330,13 @@ def slack_alert(report):
     """
     for (_, data) in report.items():
         payload = dict()
-        payload['channel'] = settings.SLACK_CHANNEL
+        payload['channel'] = SLACK_CHANNEL
         payload['link_names'] = 1
-        payload['username'] = settings.SLACK_USERNAME
-        payload['icon_emoji'] = settings.SLACK_ICON_EMOJI
+        payload['username'] = SLACK_USERNAME
+        payload['icon_emoji'] = SLACK_ICON_EMOJI
 
         attachments = dict()
-        attachments['pretext'] = settings.SLACK_PRETEXT
+        attachments['pretext'] = SLACK_PRETEXT
         attachments['text'] = 'hxxps://{}/'.format(data['name'].replace('.', '[.]'))
         attachments['fields'] = []
 
@@ -339,12 +356,12 @@ def slack_alert(report):
 
         payload['attachments'] = [attachments]
 
-        SESSION.post(settings.SLACK_WEBHOOK, data=json.dumps(payload))
+        SESSION.post(SLACK_WEBHOOK, data=json.dumps(payload))
 
         if 'links' in data and data['links']:
             download_picture(data['links'][0])
             upload_picture_on_slack(data['name'])
 
-if __name__ == '__main__':
+def handler(event, context):
     REPORT = scan()
     slack_alert(REPORT)

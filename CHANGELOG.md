@@ -4,6 +4,17 @@ CHANGELOG
 Patrowl Slack Reporter
 -----
 
+1.3.0
+-----
+
+2019/11/28
+
+### Features
+
+  - Add get_recent_assets_severity
+  - AWS lambda support  
+
+
 1.2.0
 -----
 
