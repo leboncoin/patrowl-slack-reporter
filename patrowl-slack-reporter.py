@@ -13,6 +13,7 @@ import time
 from dateutil.parser import parse
 from patrowl4py.api import PatrowlManagerApi
 from requests import Session
+import pytz
 
 # Own libraries
 import settings
@@ -20,7 +21,7 @@ import settings
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.3.0'
+VERSION = '1.3.1'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_ENDPOINT,
@@ -78,12 +79,12 @@ def get_recent_assets_severity(severity):
         assets += sorted(assetgroup['assets'], key=lambda k: k['id'], reverse=True)
 
     for asset in assets:
-        now = datetime.now(timezone.utc).astimezone()
-        now.isoformat()
-        now = str(now).replace(' ', 'T')
-        now = parse(now)
+        now = datetime.now()
+        tz = pytz.timezone(settings.TIMEZONE)
+        now = tz.localize(now)
         for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
-            diff = (now - parse(finding['found_at'])).total_seconds()
+            found_at = tz.localize(parse(finding['found_at']).replace(tzinfo=None))
+            diff = (now - found_at).total_seconds()
             if finding['severity'] == severity and diff <= settings.FREQUENCY_SECOND:
                 assets_list.append(asset)
                 break

@@ -16,11 +16,12 @@ sys.path.append('package')
 from dateutil.parser import parse
 from patrowl4py.api import PatrowlManagerApi
 from requests import Session
+import pytz
 
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.3.0'
+VERSION = '1.3.1'
 
 DEBUG = os.environ['DEBUG'] == 'True'
 EYEWITNESS_BASICAUTH = os.environ['EYEWITNESS_BASICAUTH'] == 'True'
@@ -37,6 +38,7 @@ SLACK_LEGACY_TOKEN = os.environ['SLACK_LEGACY_TOKEN']
 SLACK_PRETEXT = os.environ['SLACK_PRETEXT']
 SLACK_USERNAME = os.environ['SLACK_USERNAME']
 SLACK_WEBHOOK = os.environ['SLACK_WEBHOOK']
+TIMEZONE = os.environ['TIMEZONE']
 VIRUSTOTAL_POLICY = int(os.environ['VIRUSTOTAL_POLICY'])
 
 PATROWL_API = PatrowlManagerApi(
@@ -95,12 +97,12 @@ def get_recent_assets_severity(severity):
         assets += sorted(assetgroup['assets'], key=lambda k: k['id'], reverse=True)
 
     for asset in assets:
-        now = datetime.now(timezone.utc).astimezone()
-        now.isoformat()
-        now = str(now).replace(' ', 'T')
-        now = parse(now)
+        now = datetime.now()
+        tz = pytz.timezone(TIMEZONE)
+        now = tz.localize(now)
         for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
-            diff = (now - parse(finding['found_at'])).total_seconds()
+            found_at = tz.localize(parse(finding['found_at']).replace(tzinfo=None))
+            diff = (now - found_at).total_seconds()
             if finding['severity'] == severity and diff <= FREQUENCY_SECOND:
                 assets_list.append(asset)
                 break
@@ -280,7 +282,7 @@ def scan():
 
     report = dict()
 
-    # Gen report
+    # Gen report
     for asset in recent_assets:
         report[asset['id']] = dict()
         report[asset['id']]['name'] = asset['name']

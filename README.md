@@ -55,6 +55,7 @@ resource "aws_lambda_function" "patrowl_slack_alert" {
       SLACK_PRETEXT        = "New domain identified"
       SLACK_USERNAME       = "PatrOwl Slack Reporter"
       SLACK_WEBHOOK        = "https://hooks.slack.com/services/XXXXX/YYYYY/zzzzzzzzzzzzzzzz"
+      TIMEZONE             = "Europe/Paris"
       VIRUSTOTAL_POLICY    = "38"
     }
   }

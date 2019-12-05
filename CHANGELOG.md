@@ -4,6 +4,15 @@ CHANGELOG
 Patrowl Slack Reporter
 -----
 
+1.3.1
+-----
+
+2019/12/05
+
+### Bug fix
+
+  - Fix timezone issue
+
 1.3.0
 -----
 
