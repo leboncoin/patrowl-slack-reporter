@@ -21,7 +21,7 @@ import settings
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.3.1'
+VERSION = '1.3.2'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_ENDPOINT,
@@ -328,15 +328,16 @@ def slack_alert(report):
             if 'whois' in data and whois_field.lower() in data['whois']:
                 attachments['fields'].append({'title': whois_field, 'value': data['whois'][whois_field.lower()], 'short': False})
 
-        for warning in data['warnings']:
-            if warning not in WARNINGS_TYPE_WHITELIST:
-                attachments['color'] = 'warning'
-                link = 'No link available'
-                if 'links' in data['warnings'][warning] and data['warnings'][warning]['links']:
-                    link = data['warnings'][warning]['links'][0]
-                attachments['fields'].append({'title': 'Severity {}: {}'.format(data['warnings'][warning]['severity_num'], data['warnings'][warning]['title'].replace('.', '[.]')),
-                                              'value': link,
-                                              'short': False})
+        if 'warnings' in data:
+            for warning in data['warnings']:
+                if warning not in WARNINGS_TYPE_WHITELIST:
+                    attachments['color'] = 'warning'
+                    link = 'No link available'
+                    if 'links' in data['warnings'][warning] and data['warnings'][warning]['links']:
+                        link = data['warnings'][warning]['links'][0]
+                    attachments['fields'].append({'title': 'Severity {}: {}'.format(data['warnings'][warning]['severity_num'], data['warnings'][warning]['title'].replace('.', '[.]')),
+                                                  'value': link,
+                                                  'short': False})
 
         payload['attachments'] = [attachments]
 

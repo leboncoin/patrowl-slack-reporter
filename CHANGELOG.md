@@ -4,6 +4,16 @@ CHANGELOG
 Patrowl Slack Reporter
 -----
 
+1.3.2
+-----
+
+2019/12/09
+
+### Bug fix
+
+  - Fix warnings missing check
+
+
 1.3.1
 -----
 
