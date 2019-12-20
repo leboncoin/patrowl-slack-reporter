@@ -4,6 +4,20 @@ CHANGELOG
 Patrowl Slack Reporter
 -----
 
+2.0.0
+-----
+
+2019/12/12
+
+### Features
+
+  - Acknowledge asset and findings
+
+### Bug fix
+
+  - No more forgot asset or findings
+
+
 1.3.2
 -----
 
