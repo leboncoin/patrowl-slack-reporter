@@ -8,8 +8,9 @@
 pip3 install -r requirements.txt
 
 cp settings.py.sample settings.py
+cp patrowl_asset_lifecycle_settings.py.sample patrowl_asset_lifecycle_settings.py
 
-# Edit settings.py
+# Edit each settings.py
 ```
 
 ### AWS Lambda
@@ -59,5 +60,7 @@ resource "aws_lambda_function" "patrowl_slack_reporter" {
 
 ```
 python3 patrowl-slack-reporter.py
+
+python3 patrowl_asset_lifecycle.py
 ```
 
