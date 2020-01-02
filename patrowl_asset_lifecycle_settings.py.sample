@@ -1,0 +1,9 @@
+GROUP_ID = 1
+MAX_DAYS = 30
+PATROWL_PRIVATE_ENDPOINT = 'http://localhost'
+PATROWL_PUBLIC_ENDPOINT = 'https://my.patrowl.domain.net'
+SLACK_CHANNEL = '#my-favorite-chan'
+SLACK_ICON_EMOJI = ':sweat_smile:'
+SLACK_USERNAME = 'Patrowl Slack Reporter'
+SLACK_WEBHOOK = 'https://hooks.slack.com/services/XXXXX/YYYYY/zzzzzzzzzzzzzzzz'
+TIMEZONE = 'Europe/Paris'
