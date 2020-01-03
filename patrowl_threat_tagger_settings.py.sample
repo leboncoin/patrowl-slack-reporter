@@ -1,0 +1,7 @@
+GROUP_ID = 1
+PATROWL_PRIVATE_ENDPOINT = 'http://localhost'
+PATROWL_PUBLIC_ENDPOINT = 'https://my.patrowl.domain.net'
+SLACK_CHANNEL = '#my-favorite-chan'
+SLACK_ICON_EMOJI = ':hacker:'
+SLACK_USERNAME = 'Patrowl Threat Tagger'
+SLACK_WEBHOOK = 'https://hooks.slack.com/services/XXXXX/YYYYY/zzzzzzzzzzzzzzzz'
