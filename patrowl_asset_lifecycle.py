@@ -22,7 +22,7 @@ import patrowl_asset_lifecycle_settings as settings
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.0.1'
+VERSION = '1.0.2'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -220,7 +220,7 @@ def main():
                     current_threats_group_id, _ = get_group_ids()
         if ct_assets:
             for threat_asset in ct_assets:
-                if not has_old_findings(threat_asset, 'high', settings.MAX_DAYS):
+                if not has_recent_findings(threat_asset, 'high', settings.MAX_DAYS):
                     continue
                 resp_ok = slack_alert(threat_asset, 'Current', '{} archived threats'.format(ASSETGROUP_BASE_NAME), criticity='low')
                 if not resp_ok:

@@ -1,6 +1,7 @@
 libs/*
 settings.py
 patrowl_asset_lifecycle_settings.py
+patrowl_threat_tagger_settings.py
 *.pyc
 picture.png
 build/*
