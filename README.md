@@ -7,8 +7,9 @@
 ```
 pip3 install -r requirements.txt
 
-cp settings.py.sample settings.py
+cp patrowl_slack_alert_settings.py.sample patrowl_slack_alert_settings.py
 cp patrowl_asset_lifecycle_settings.py.sample patrowl_asset_lifecycle_settings.py
+cp patrowl_threat_tagger_settings.py.sample patrowl_threat_tagger_settings.py
 
 # Edit each settings.py
 ```
@@ -23,7 +24,7 @@ rm ../patrowl_slack_reporter.zip
 # Build third-party libraries
 pip3 install -r ../requirements.txt --target ./package
 
-cp ../patrowl-slack-reporter_lamba.py patrowl-slack-reporter.py
+cp ../patrowl_slack_alert.py.lambda patrowl_slack_alert.py
 
 # Build archive with all dependencies
 zip -r9 ../patrowl_slack_reporter.zip .
@@ -31,11 +32,11 @@ zip -r9 ../patrowl_slack_reporter.zip .
 
 Terraform example :
 ```
-resource "aws_lambda_function" "patrowl_slack_reporter" {
+resource "aws_lambda_function" "patrowl_slack_alert" {
   filename         = "patrowl_slack_reporter.zip"
-  function_name    = "patrowl_slack_reporter"
+  function_name    = "patrowl_slack_alert"
   role             = "${aws_iam_role.iam_for_lambda.arn}"
-  handler          = "patrowl_slack_reporter.handler"
+  handler          = "patrowl_slack_alert.handler"
   source_code_hash = "${filebase64sha256("patrowl_slack_reporter.zip")}"
   runtime          = "python3.7"
   timeout          = 840
@@ -59,8 +60,9 @@ resource "aws_lambda_function" "patrowl_slack_reporter" {
 ### On-premise
 
 ```
-python3 patrowl-slack-reporter.py
+python3 patrowl_slack_alert.py
 
 python3 patrowl_asset_lifecycle.py
-```
 
+python3 patrowl_threat_tagger.py
+```

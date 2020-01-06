@@ -8,8 +8,6 @@ import logging
 import os
 import random
 import re
-import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Third party library imports
 from datetime import datetime
@@ -18,21 +16,22 @@ from dns.resolver import query
 # from patrowl4py.api import PatrowlManagerApi
 from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 from requests import Session
+import urllib3
+
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Own libraries
 import patrowl_threat_tagger_settings as settings
 
 # Debug
-# from pdb import set_trace as st
+from pdb import set_trace as st
 
-VERSION = '1.0.0'
+VERSION = '1.1.0'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
     auth_token=settings.PATROWL_APITOKEN
 )
-
-WARNINGS_TYPE_BLACKLIST = []
 
 LOGGER = logging.getLogger('patrowl-threat-tagger')
 
@@ -154,6 +153,7 @@ def update_ip_finding(asset, ct_findings):
     else:
         current_ip = 'No IP'
     add_current_ip_finding = True
+    threat_codename = None
     for i, finding in enumerate(asset_findings):
         # Update 'Current IP' finding
         if 'Current IP: ' in finding['title'] \
@@ -163,11 +163,37 @@ def update_ip_finding(asset, ct_findings):
             ct_findings[asset['id']][i]['title'] = 'Current IP: {}'.format(current_ip)
         elif finding['title'] == 'Current IP: {}'.format(current_ip):
             add_current_ip_finding = False
+        elif 'Threat codename: ' in finding['title']:
+            threat_codename = finding
 
     if add_current_ip_finding:
         LOGGER.warning('Add "Current IP: %s" for %s', current_ip, asset['name'])
         add_finding(asset, 'Current IP: {}'.format(current_ip), 'info')
         ct_findings[asset['id']].append({'title': 'Current IP: {}'.format(current_ip)})
+
+    # Check if "Threat codename" needs an update
+    if threat_codename is not None and current_ip != 'No IP':
+        old_ip = current_ip
+        match = re.search(re.compile('\((.*)\)'), threat_codename['title'])
+        # Should always matches
+        if match:
+            old_ip = match.group(1)
+        if old_ip != current_ip:
+            # Rename "Threat codename" finding IP
+            LOGGER.warning('Rename "%s" for %s', threat_codename['title'], asset['name'])
+            for i, finding in enumerate(ct_findings[asset['id']]):
+                if 'Threat codename' in finding['title']:
+                    ct_findings[asset['id']][i] = {
+                        'severity': threat_codename['severity'],
+                        'title': threat_codename['title'],
+                        'updated_at': threat_codename['updated_at'],
+                        'asset': asset['id']}
+            delete_finding(threat_codename['id'])
+            add_finding(
+                asset,
+                threat_codename['title'].replace(old_ip, current_ip),
+                threat_codename['severity'])
+            ct_findings[asset['id']].append({'title': 'Current IP: {}'.format(current_ip)})
 
     return ct_findings
 
@@ -367,8 +393,6 @@ def main():
         for at_asset in at_assets:
             update_ip_finding(at_asset, at_findings)
             update_threat(at_asset, at_findings[at_asset['id']], ct_findings)
-
-        # for archived_asset in at_assets:
 
 
 if __name__ == '__main__':

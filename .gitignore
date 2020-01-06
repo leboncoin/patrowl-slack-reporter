@@ -1,8 +1,11 @@
-libs/*
-settings.py
-patrowl_asset_lifecycle_settings.py
-patrowl_threat_tagger_settings.py
 *.pyc
-picture.png
 build/*
+libs/*
+Patrowl4py/
+patrowl_asset_lifecycle_settings.py
 patrowl_slack_alert.zip
+patrowl_slack_alert_settings.py
+patrowl_threat_tagger_settings.py
+patrowl_threat_reporter_settings.py
+todo/
+tools/
