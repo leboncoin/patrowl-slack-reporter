@@ -12,7 +12,7 @@ import re
 # Third party library imports
 from datetime import datetime
 from dateutil.parser import parse
-from dns.resolver import query
+from dns.resolver import Resolver
 # from patrowl4py.api import PatrowlManagerApi
 from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 from requests import Session
@@ -24,27 +24,26 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 import patrowl_threat_tagger_settings as settings
 
 # Debug
-from pdb import set_trace as st
+# from pdb import set_trace as st
 
-VERSION = '1.1.0'
+VERSION = '1.1.1'
 
+LOGGER = logging.getLogger('patrowl-threat-tagger')
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
     auth_token=settings.PATROWL_APITOKEN
 )
-
-LOGGER = logging.getLogger('patrowl-threat-tagger')
-
+RESOLVER = Resolver()
 SESSION = Session()
 
+ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.GROUP_ID)['name']
 COLOR_MAPPING = {
     'info': '#b4c2bf',
     'low': '#4287f5',
     'medium': '#f5a742',
     'high': '#b32b2b',
 }
-
-ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.GROUP_ID)['name']
+RESOLVER.nameservers = ['8.8.8.8']
 
 def safe_url(text):
     """
@@ -101,7 +100,7 @@ def fqdn_ips(fqdn):
     """
     resolved_ips = list()
     try:
-        for ip_address in query(fqdn):
+        for ip_address in RESOLVER.query(fqdn):
             resolved_ips.append(str(ip_address))
     except:
         return resolved_ips
