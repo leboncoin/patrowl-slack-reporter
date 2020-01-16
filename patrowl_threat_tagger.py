@@ -12,7 +12,8 @@ import re
 # Third party library imports
 from datetime import datetime
 from dateutil.parser import parse
-from dns.resolver import Resolver
+from dns.resolver import query, NoAnswer, NoNameservers, NXDOMAIN
+from dns.exception import DNSException
 # from patrowl4py.api import PatrowlManagerApi
 from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 from requests import Session
@@ -26,14 +27,13 @@ import patrowl_threat_tagger_settings as settings
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.1.1'
+VERSION = '1.2.1'
 
 LOGGER = logging.getLogger('patrowl-threat-tagger')
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
     auth_token=settings.PATROWL_APITOKEN
 )
-RESOLVER = Resolver()
 SESSION = Session()
 
 ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.GROUP_ID)['name']
@@ -43,7 +43,6 @@ COLOR_MAPPING = {
     'medium': '#f5a742',
     'high': '#b32b2b',
 }
-RESOLVER.nameservers = ['8.8.8.8']
 
 def safe_url(text):
     """
@@ -100,14 +99,20 @@ def fqdn_ips(fqdn):
     """
     resolved_ips = list()
     try:
-        for ip_address in RESOLVER.query(fqdn):
+        for ip_address in query(fqdn):
             resolved_ips.append(str(ip_address))
-    except:
-        return resolved_ips
+    except (NoAnswer, NoNameservers, NXDOMAIN):
+        return 'No IP'
+    except DNSException as dns_error:
+        LOGGER.critical('DNS error: %s', dns_error)
+        return 'DNS error'
 
     resolved_ips.sort()
 
-    return resolved_ips
+    if resolved_ips:
+        return resolved_ips[0]
+
+    return 'No IP'
 
 
 def add_finding(asset, title, criticity):
@@ -146,11 +151,10 @@ def update_ip_finding(asset, ct_findings):
     This function update 'Current IP: xx.xx.xx.xx'
     """
     asset_findings = ct_findings[asset['id']]
-    list_ip = fqdn_ips(asset['name'])
-    if list_ip:
-        current_ip = list_ip[0]
-    else:
-        current_ip = 'No IP'
+    current_ip = fqdn_ips(asset['name'])
+    # Abort if DNS is in error
+    if current_ip == 'DNS error':
+        return ct_findings
     add_current_ip_finding = True
     threat_codename = None
     for i, finding in enumerate(asset_findings):
