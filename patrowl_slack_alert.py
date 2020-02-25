@@ -1,6 +1,11 @@
 #!/usr/bin/env python
-#-*- coding: utf-8 -*-
-""" Patrowl Slack Alert """
+"""
+Patrowl Slack Alert
+
+Copyright (c) 2020 Nicolas Beguier
+Licensed under the Apache License
+Written by Nicolas BEGUIER (nicolas_beguier@hotmail.com)
+"""
 
 # Standard library imports
 import json
@@ -8,6 +13,7 @@ import logging
 
 # Third party library imports
 from patrowl4py.api import PatrowlManagerApi
+# from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 from requests import Session
 import urllib3
 

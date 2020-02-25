@@ -1,6 +1,12 @@
 #!/usr/bin/env python
-#-*- coding: utf-8 -*-
-""" Patrowl Threat Tagger """
+"""
+Patrowl Threat Tagger
+
+Copyright (c) 2020 Nicolas Beguier
+Licensed under the Apache License
+Written by Nicolas BEGUIER (nicolas_beguier@hotmail.com)
+"""
+
 
 # Standard library imports
 import json
@@ -14,8 +20,8 @@ from datetime import datetime
 from dateutil.parser import parse
 from dns.resolver import query, NoAnswer, NoNameservers, NXDOMAIN
 from dns.exception import DNSException
-# from patrowl4py.api import PatrowlManagerApi
-from Patrowl4py.patrowl4py.api import PatrowlManagerApi
+from patrowl4py.api import PatrowlManagerApi
+# from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 from requests import Session
 import urllib3
 
