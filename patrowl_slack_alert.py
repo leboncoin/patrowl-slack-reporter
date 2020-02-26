@@ -17,15 +17,15 @@ from patrowl4py.api import PatrowlManagerApi
 from requests import Session
 import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 # Own libraries
-import patrowl_slack_alert_settings as settings
+import settings
 
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '2.0.1'
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+VERSION = '2.1.0'
 
 WARNINGS_TYPE_BLACKLIST = [
     'certstream_report',
@@ -59,7 +59,7 @@ def get_assets_from_groups():
     Returns the assets Ids from all specified groups
     """
     assets = list()
-    for group_id in settings.LIST_GROUP_ID:
+    for group_id in settings.PSA_LIST_GROUP_ID:
         assetgroup = PATROWL_API.get_assetgroup_by_id(group_id)
         assets += sorted(assetgroup['assets'], key=lambda k: k['id'], reverse=True)
     return assets
@@ -102,8 +102,8 @@ def slack_alert(report, object_type):
         payload = dict()
         payload['channel'] = settings.SLACK_CHANNEL
         payload['link_names'] = 1
-        payload['username'] = settings.SLACK_USERNAME
-        payload['icon_emoji'] = settings.SLACK_ICON_EMOJI
+        payload['username'] = settings.PSA_SLACK_USERNAME
+        payload['icon_emoji'] = settings.PSA_SLACK_ICON_EMOJI
 
         attachments = dict()
         attachments['pretext'] = 'New {} identified'.format(object_type)

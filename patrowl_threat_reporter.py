@@ -11,6 +11,7 @@ Written by Nicolas BEGUIER (nicolas_beguier@hotmail.com)
 import json
 import logging
 import re
+import sys
 
 # Third party library imports
 from patrowl4py.api import PatrowlManagerApi
@@ -18,15 +19,15 @@ from patrowl4py.api import PatrowlManagerApi
 from requests import Session
 import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 # Own libraries
-import patrowl_threat_reporter_settings as settings
+import settings
 
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.0.0'
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+VERSION = '1.1.0'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -44,7 +45,7 @@ COLOR_MAPPING = {
     'high': '#b32b2b',
 }
 
-ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.GROUP_ID)['name']
+ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.PTR_GROUP_ID)['name']
 
 def safe_url(text):
     """
@@ -102,8 +103,8 @@ def slack_alert(threats):
     payload = dict()
     payload['channel'] = settings.SLACK_CHANNEL
     payload['link_names'] = 1
-    payload['username'] = settings.SLACK_USERNAME
-    payload['icon_emoji'] = settings.SLACK_ICON_EMOJI
+    payload['username'] = settings.PTR_SLACK_USERNAME
+    payload['icon_emoji'] = settings.PTR_SLACK_ICON_EMOJI
 
     attachments = dict()
     attachments['pretext'] = 'Patrowl Threat Reporter'
@@ -133,10 +134,10 @@ def main():
     """
     current_threats_group_id, archived_threats_group_id = get_group_ids()
 
-    base_assets = get_assets(settings.GROUP_ID)
+    base_assets = get_assets(settings.PTR_GROUP_ID)
     if current_threats_group_id is None or archived_threats_group_id is None:
         LOGGER.critical('run Patrowl Asset Lifecycle first')
-        exit(1)
+        sys.exit(1)
     ct_assets = get_assets(current_threats_group_id)
     at_assets = get_assets(archived_threats_group_id)
 

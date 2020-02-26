@@ -1,8 +1,0 @@
-LIST_GROUP_ID = [29, 46, 47, 51, 55, 56]
-PATROWL_APITOKEN = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
-PATROWL_PRIVATE_ENDPOINT = 'http://localhost'
-PATROWL_PUBLIC_ENDPOINT = 'https://my.patrowl.domain.net'
-SLACK_CHANNEL = '#my-favorite-chan'
-SLACK_ICON_EMOJI = ':sweat_smile:'
-SLACK_USERNAME = 'Patrowl Slack Reporter'
-SLACK_WEBHOOK = 'https://hooks.slack.com/services/XXXXX/YYYYY/zzzzzzzzzzzzzzzz'

@@ -19,14 +19,14 @@ from patrowl4py.api import PatrowlManagerApi
 # from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 
 # Own libraries
-import patrowl_scan_scheduler_settings as settings
+import settings
 
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.0.0'
-
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+VERSION = '1.0.1'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -83,6 +83,7 @@ def do_scan(scan_def):
     now = datetime.now(tz=last_scan_date.tzinfo)
 
     if (now - last_scan_date) < period:
+        LOGGER.warning('scan definition #%s has run recently: %s', scan_def['id'], now - last_scan_date)
         return False
 
     return True

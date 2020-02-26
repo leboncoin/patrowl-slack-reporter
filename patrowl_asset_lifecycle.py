@@ -20,15 +20,15 @@ from pytz import timezone
 from requests import Session
 import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 # Own libraries
-import patrowl_asset_lifecycle_settings as settings
+import settings
 
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.1.1'
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+VERSION = '1.2.0'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -51,7 +51,7 @@ COLOR_MAPPING = {
 NOW = datetime.now()
 TZ = timezone(settings.TIMEZONE)
 NOW = TZ.localize(NOW)
-ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.GROUP_ID)['name']
+ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.PAL_GROUP_ID)['name']
 
 def safe_url(text):
     """
@@ -132,8 +132,8 @@ def slack_alert(asset, asset_type, asset_destination, criticity='high'):
     payload = dict()
     payload['channel'] = settings.SLACK_CHANNEL
     payload['link_names'] = 1
-    payload['username'] = settings.SLACK_USERNAME
-    payload['icon_emoji'] = settings.SLACK_ICON_EMOJI
+    payload['username'] = settings.PAL_SLACK_USERNAME
+    payload['icon_emoji'] = settings.PAL_SLACK_ICON_EMOJI
 
     attachments = dict()
     attachments['pretext'] = '{} threat move to {}'.format(asset_type, asset_destination)
@@ -179,7 +179,7 @@ def main():
     """
     current_threats_group_id, archived_threats_group_id = get_group_ids()
 
-    base_assets = get_assets(settings.GROUP_ID)
+    base_assets = get_assets(settings.PAL_GROUP_ID)
     ct_assets = list()
     if current_threats_group_id is not None:
         ct_assets = get_assets(current_threats_group_id)
@@ -191,27 +191,27 @@ def main():
         LOGGER.warning('no assets')
     else:
         for base_asset in base_assets:
-            if has_recent_findings(base_asset, 'high', settings.MAX_DAYS):
+            if has_recent_findings(base_asset, 'high', settings.PAL_MAX_DAYS):
                 resp_ok = slack_alert(base_asset, 'New', '{} current threats'.format(ASSETGROUP_BASE_NAME))
                 if not resp_ok:
                     continue
                 LOGGER.warning('move asset {} from {} to {}'.format(base_asset, ASSETGROUP_BASE_NAME, '{} current threats'.format(ASSETGROUP_BASE_NAME)))
                 move_asset(
                     base_asset,
-                    settings.GROUP_ID,
+                    settings.PAL_GROUP_ID,
                     ASSETGROUP_BASE_NAME,
                     current_threats_group_id,
                     '{} current threats'.format(ASSETGROUP_BASE_NAME))
                 if current_threats_group_id is None:
                     current_threats_group_id, _ = get_group_ids()
-            elif has_old_findings(base_asset, 'high', settings.MAX_DAYS):
+            elif has_old_findings(base_asset, 'high', settings.PAL_MAX_DAYS):
                 resp_ok = slack_alert(base_asset, 'New', '{} archived threats'.format(ASSETGROUP_BASE_NAME), criticity='low')
                 if not resp_ok:
                     continue
                 LOGGER.warning('move asset {} from {} to {}'.format(base_asset, ASSETGROUP_BASE_NAME, '{} archived threats'.format(ASSETGROUP_BASE_NAME)))
                 move_asset(
                     base_asset,
-                    settings.GROUP_ID,
+                    settings.PAL_GROUP_ID,
                     ASSETGROUP_BASE_NAME,
                     archived_threats_group_id,
                     '{} archived threats'.format(ASSETGROUP_BASE_NAME))
@@ -219,7 +219,7 @@ def main():
                     _, archived_threats_group_id = get_group_ids()
         if at_assets:
             for archived_asset in at_assets:
-                if not has_recent_findings(archived_asset, 'high', settings.MAX_DAYS) or not current_ip_exists(archived_asset):
+                if not has_recent_findings(archived_asset, 'high', settings.PAL_MAX_DAYS) or not current_ip_exists(archived_asset):
                     continue
                 resp_ok = slack_alert(archived_asset, 'Archived', '{} current threats'.format(ASSETGROUP_BASE_NAME))
                 if not resp_ok:
@@ -235,7 +235,7 @@ def main():
                     current_threats_group_id, _ = get_group_ids()
         if ct_assets:
             for threat_asset in ct_assets:
-                if has_recent_findings(threat_asset, 'high', settings.MAX_DAYS) and current_ip_exists(threat_asset):
+                if has_recent_findings(threat_asset, 'high', settings.PAL_MAX_DAYS) and current_ip_exists(threat_asset):
                     continue
                 resp_ok = slack_alert(threat_asset, 'Current', '{} archived threats'.format(ASSETGROUP_BASE_NAME), criticity='low')
                 if not resp_ok:

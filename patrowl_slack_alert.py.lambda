@@ -13,7 +13,6 @@ import logging
 import os
 import sys
 import urllib3
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 # Third party library imports
 sys.path.append('package')
@@ -23,15 +22,17 @@ from patrowl4py.api import PatrowlManagerApi
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '2.0.1'
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-LIST_GROUP_ID = os.environ['LIST_GROUP_ID'].split(',')
+VERSION = '2.1.0'
+
 PATROWL_APITOKEN = os.environ['PATROWL_APITOKEN']
 PATROWL_PRIVATE_ENDPOINT = os.environ['PATROWL_PRIVATE_ENDPOINT']
 PATROWL_PUBLIC_ENDPOINT = os.environ['PATROWL_PUBLIC_ENDPOINT']
+PSA_LIST_GROUP_ID = os.environ['LIST_GROUP_ID'].split(',')
+PSA_SLACK_ICON_EMOJI = os.environ['SLACK_ICON_EMOJI']
+PSA_SLACK_USERNAME = os.environ['SLACK_USERNAME']
 SLACK_CHANNEL = os.environ['SLACK_CHANNEL']
-SLACK_ICON_EMOJI = os.environ['SLACK_ICON_EMOJI']
-SLACK_USERNAME = os.environ['SLACK_USERNAME']
 SLACK_WEBHOOK = os.environ['SLACK_WEBHOOK']
 
 WARNINGS_TYPE_BLACKLIST = [
@@ -66,7 +67,7 @@ def get_assets_from_groups():
     Returns the assets Ids from all specified groups
     """
     assets = list()
-    for group_id in LIST_GROUP_ID:
+    for group_id in PSA_LIST_GROUP_ID:
         assetgroup = PATROWL_API.get_assetgroup_by_id(group_id)
         assets += sorted(assetgroup['assets'], key=lambda k: k['id'], reverse=True)
     return assets
@@ -109,8 +110,8 @@ def slack_alert(report, object_type):
         payload = dict()
         payload['channel'] = SLACK_CHANNEL
         payload['link_names'] = 1
-        payload['username'] = SLACK_USERNAME
-        payload['icon_emoji'] = SLACK_ICON_EMOJI
+        payload['username'] = PSA_SLACK_USERNAME
+        payload['icon_emoji'] = PSA_SLACK_ICON_EMOJI
 
         attachments = dict()
         attachments['pretext'] = 'New {} identified'.format(object_type)

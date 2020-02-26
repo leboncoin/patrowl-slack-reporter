@@ -7,11 +7,9 @@
 ```
 pip3 install -r requirements.txt
 
-cp patrowl_slack_alert_settings.py.sample patrowl_slack_alert_settings.py
-cp patrowl_asset_lifecycle_settings.py.sample patrowl_asset_lifecycle_settings.py
-cp patrowl_threat_tagger_settings.py.sample patrowl_threat_tagger_settings.py
+cp settings.py.sample settings.py
 
-# Edit each settings.py
+# Edit settings.py
 ```
 
 ### AWS Lambda
@@ -42,13 +40,13 @@ resource "aws_lambda_function" "patrowl_slack_alert" {
   timeout          = 840
   environment {
     variables = {
-      LIST_GROUP_ID        = "29,46,47,51,55,56"
       PATROWL_APITOKEN     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
       PATROWL_PRIVATE_ENDPOINT = "http://192.168.0.1"
       PATROWL_PUBLIC_ENDPOINT  = "https://my.patrowl.domain.net"
+      PSA_LIST_GROUP_ID        = "29,46,47,51,55,56"
+      PSA_SLACK_ICON_EMOJI     = ":sweat_smile:"
+      PSA_SLACK_USERNAME       = "PatrOwl Slack Reporter"
       SLACK_CHANNEL        = "#my-favorite-chan"
-      SLACK_ICON_EMOJI     = ":sweat_smile:"
-      SLACK_USERNAME       = "PatrOwl Slack Reporter"
       SLACK_WEBHOOK        = "https://hooks.slack.com/services/XXXXX/YYYYY/zzzzzzzzzzzzzzzz"
     }
   }

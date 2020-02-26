@@ -1,0 +1,32 @@
+# Patrowl
+PATROWL_APITOKEN = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+PATROWL_PRIVATE_ENDPOINT = 'https://patrowl.domain.lan'
+PATROWL_PUBLIC_ENDPOINT = 'https://patrowl.domain.net'
+
+# Slack
+SLACK_CHANNEL = '#my-channel'
+SLACK_WEBHOOK = 'https://hooks.slack.com/services/XXXXXX/YYYYY/ZZZZZZZZZZZZZZZZZZ'
+
+# Others
+TIMEZONE = 'Europe/Paris'
+
+# Patrowl Asset Lifecycle
+PAL_GROUP_ID = 1
+PAL_MAX_DAYS = 10
+PAL_SLACK_ICON_EMOJI = ':truck:'
+PAL_SLACK_USERNAME = 'Patrowl Asset Lifecycle'
+
+# Patrowl Slack Alert
+PSA_SLACK_ICON_EMOJI = ':sleuth_or_spy:'
+PSA_SLACK_USERNAME = 'Patrowl Slack Reporter'
+PSA_LIST_GROUP_ID = [1, 3, 4]
+
+# Patrowl Threat Reporter
+PTR_GROUP_ID = 1
+PTR_SLACK_ICON_EMOJI = ':newspaper:'
+PTR_SLACK_USERNAME = 'Patrowl Threat Reporter'
+
+# Patrowl Threat Tagger
+PTT_GROUP_ID = 1
+PTT_SLACK_ICON_EMOJI = ':pencil2:'
+PTT_SLACK_USERNAME = 'Patrowl Threat Tagger'

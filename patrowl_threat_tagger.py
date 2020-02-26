@@ -9,14 +9,15 @@ Written by Nicolas BEGUIER (nicolas_beguier@hotmail.com)
 
 
 # Standard library imports
+from datetime import datetime
 import json
 import logging
 import os
 import random
 import re
+import sys
 
 # Third party library imports
-from datetime import datetime
 from dateutil.parser import parse
 from dns.resolver import query, NoAnswer, NoNameservers, NXDOMAIN
 from dns.exception import DNSException
@@ -25,15 +26,15 @@ from patrowl4py.api import PatrowlManagerApi
 from requests import Session
 import urllib3
 
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
 # Own libraries
-import patrowl_threat_tagger_settings as settings
+import settings
 
 # Debug
 # from pdb import set_trace as st
 
-VERSION = '1.2.1'
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+VERSION = '1.3.0'
 
 LOGGER = logging.getLogger('patrowl-threat-tagger')
 PATROWL_API = PatrowlManagerApi(
@@ -42,7 +43,7 @@ PATROWL_API = PatrowlManagerApi(
 )
 SESSION = Session()
 
-ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.GROUP_ID)['name']
+ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.PTT_GROUP_ID)['name']
 COLOR_MAPPING = {
     'info': '#b4c2bf',
     'low': '#4287f5',
@@ -350,8 +351,8 @@ def slack_alert(threat_type, threat_title, asset, criticity='high'):
     payload = dict()
     payload['channel'] = settings.SLACK_CHANNEL
     payload['link_names'] = 1
-    payload['username'] = settings.SLACK_USERNAME
-    payload['icon_emoji'] = settings.SLACK_ICON_EMOJI
+    payload['username'] = settings.PTT_SLACK_USERNAME
+    payload['icon_emoji'] = settings.PTT_SLACK_ICON_EMOJI
 
     attachments = dict()
     attachments['pretext'] = '{} - {}'.format(threat_type, threat_title)
@@ -372,16 +373,16 @@ def main():
     """
     Main function
     """
-    if not os.path.exists('adjectives.txt') and not not os.path.exists('animals.txt'):
+    if not os.path.exists('adjectives.txt') or not os.path.exists('animals.txt'):
         LOGGER.critical('You need both adjectives.txt and animals.txt')
-        exit(1)
+        sys.exit(1)
 
     current_threats_group_id, archived_threats_group_id = get_group_ids()
 
-    base_assets = get_assets(settings.GROUP_ID)
+    base_assets = get_assets(settings.PTT_GROUP_ID)
     if current_threats_group_id is None or archived_threats_group_id is None:
         LOGGER.critical('run Patrowl Asset Lifecycle first')
-        exit(1)
+        sys.exit(1)
     ct_assets = get_assets(current_threats_group_id)
     at_assets = get_assets(archived_threats_group_id)
 
