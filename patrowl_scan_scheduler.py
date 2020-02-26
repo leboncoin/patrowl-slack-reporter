@@ -26,7 +26,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.0.1'
+VERSION = '1.0.2'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -71,9 +71,10 @@ def do_scan(scan_def):
         LOGGER.warning('Error parsing scan definition #%s: period not found in tags', scan_def['id'])
         return False
 
-    if PATROWL_API.get_scans(status='started', title=scan_def['title'], limit=1):
-        LOGGER.warning('scan definition #%s already running', scan_def['id'])
-        return False
+    for scan in PATROWL_API.get_scans(title=scan_def['title']):
+        if scan['status'] in ['enqueued', 'started']:
+            LOGGER.warning('scan definition #%s already %s', scan_def['id'], scan['status'])
+            return False
 
     last_scan = PATROWL_API.get_scans(status='finished', title=scan_def['title'])
     # In case there is no finished scan
