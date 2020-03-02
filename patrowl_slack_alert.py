@@ -25,7 +25,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '2.1.0'
+VERSION = '2.1.1'
 
 WARNINGS_TYPE_BLACKLIST = [
     'certstream_report',
@@ -71,7 +71,7 @@ def get_new_assets(assets):
     report = dict()
     for asset in assets:
         asset_data = PATROWL_API.get_asset_by_id(asset['id'])
-        if asset_data['status'] == 'new':
+        if 'status' in asset_data and asset_data['status'] == 'new':
             report[asset['id']] = asset_data
 
     LOGGER.warning('Found %s new assets.', len(report))
@@ -85,7 +85,7 @@ def get_new_findings(assets, severities):
     report = dict()
     for asset in assets:
         for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
-            if finding['status'] == 'new' \
+            if 'status' in finding and finding['status'] == 'new' \
                 and finding['severity'] in severities \
                 and finding['type'] not in WARNINGS_TYPE_BLACKLIST:
                 report[finding['id']] = finding

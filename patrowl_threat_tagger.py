@@ -34,7 +34,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.3.0'
+VERSION = '1.3.1'
 
 LOGGER = logging.getLogger('patrowl-threat-tagger')
 PATROWL_API = PatrowlManagerApi(
@@ -94,7 +94,7 @@ def get_findings(assets):
     for asset in assets:
         assets_findings[asset['id']] = list()
         for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
-            if 'Current IP: ' in finding['title'] \
+            if 'title' in finding and 'Current IP: ' in finding['title'] \
                 or 'Threat codename: ' in finding['title']:
                 assets_findings[asset['id']].append(finding)
     return assets_findings

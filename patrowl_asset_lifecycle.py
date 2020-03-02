@@ -28,7 +28,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.2.0'
+VERSION = '1.2.1'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -91,6 +91,8 @@ def has_recent_findings(asset, severities, days):
     """
     seconds = days*12*3600
     for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
+        if not 'found_at' in finding:
+            continue
         found_at = TZ.localize(parse(finding['found_at']).replace(tzinfo=None))
         diff = (NOW - found_at).total_seconds()
         if diff <= seconds \
