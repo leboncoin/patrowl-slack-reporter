@@ -11,6 +11,7 @@ Written by Nicolas BEGUIER (nicolas_beguier@hotmail.com)
 from datetime import datetime, timedelta
 import logging
 import re
+import urllib
 
 # Third party library imports
 from dateutil.parser import parse
@@ -26,7 +27,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.0.2'
+VERSION = '1.0.4'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -41,6 +42,7 @@ def get_period_from_title(title):
     Looking for [<period>]:
       - Every n minutes, Every n hours, Hourly, Daily
     """
+    # pylint: disable=W1401
     for tag in re.findall("\[(.*?)\]", title):
         if tag == 'Daily':
             return timedelta(days=1)
@@ -71,16 +73,22 @@ def do_scan(scan_def):
         LOGGER.warning('Error parsing scan definition #%s: period not found in tags', scan_def['id'])
         return False
 
-    for scan in PATROWL_API.get_scans(title=scan_def['title']):
+    for scan in PATROWL_API.get_scans(title=urllib.parse.quote(scan_def['title'])):
         if scan['status'] in ['enqueued', 'started']:
             LOGGER.warning('scan definition #%s already %s', scan_def['id'], scan['status'])
             return False
 
-    last_scan = PATROWL_API.get_scans(status='finished', title=scan_def['title'])
+    last_scans = PATROWL_API.get_scans(status='finished', title=urllib.parse.quote(scan_def['title']))
     # In case there is no finished scan
-    if not last_scan:
+    if not last_scans:
         return True
-    last_scan_date = parse(last_scan[-1]['finished_at'])
+
+    # Get last finished scan
+    last_scan_date = parse(last_scans[0]['finished_at'])
+    for last_scan in last_scans:
+        if parse(last_scan['finished_at']) > last_scan_date:
+            last_scan_date = parse(last_scan['finished_at'])
+
     now = datetime.now(tz=last_scan_date.tzinfo)
 
     if (now - last_scan_date) < period:
