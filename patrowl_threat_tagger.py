@@ -22,7 +22,6 @@ from dateutil.parser import parse
 from dns.resolver import query, NoAnswer, NoNameservers, NXDOMAIN
 from dns.exception import DNSException
 from patrowl4py.api import PatrowlManagerApi
-# from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 from requests import Session
 import urllib3
 
@@ -34,8 +33,9 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.3.1'
+VERSION = '1.3.2'
 
+logging.basicConfig()
 LOGGER = logging.getLogger('patrowl-threat-tagger')
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,

@@ -1,7 +1,7 @@
 *.pyc
 build/*
 libs/*
-Patrowl4py/
+patrowl4py/
 patrowl_slack_alert.zip
 *settings.py
 todo/*

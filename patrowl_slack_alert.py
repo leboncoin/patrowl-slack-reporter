@@ -13,7 +13,6 @@ import logging
 
 # Third party library imports
 from patrowl4py.api import PatrowlManagerApi
-# from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 from requests import Session
 import urllib3
 
@@ -25,7 +24,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '2.1.1'
+VERSION = '2.2.1'
 
 WARNINGS_TYPE_BLACKLIST = [
     'certstream_report',
@@ -44,6 +43,7 @@ PATROWL_API = PatrowlManagerApi(
     auth_token=settings.PATROWL_APITOKEN
 )
 
+logging.basicConfig()
 LOGGER = logging.getLogger('patrowl-slack-alert')
 
 SESSION = Session()
@@ -94,6 +94,30 @@ def get_new_findings(assets, severities):
 
     return report
 
+def gen_eyewitness_diff(links):
+    """
+    Return an eyewitness diff link
+    """
+    diff_page = '/eyewitness_diff.html'
+    oldscan = 0
+    newscan = 0
+    assetid = 0
+    ishttps = 0
+    imgfilename = ''
+    for link in links:
+        fqdn = link.split('/')[2]
+        if oldscan == 0 and newscan == 0:
+            newscan = oldscan = link.split('/')[3]
+        elif newscan > link.split('/')[3]:
+            oldscan = link.split('/')[3]
+        else:
+            newscan = link.split('/')[3]
+        assetid = link.split('/')[4]
+        ishttps = link.split('/')[5]
+        imgfilename = link.split('/')[7]
+    return 'https://{}{}?oldscan={}&newscan={}&assetid={}&ishttps={}&imgfilename={}'.format(
+        fqdn, diff_page, oldscan, newscan, assetid, ishttps, imgfilename)
+
 def slack_alert(report, object_type):
     """
     Post report on Slack
@@ -119,7 +143,10 @@ def slack_alert(report, object_type):
             attachments['fields'].append({'title': 'Asset Name', 'value': safe_url(data['asset_name'])})
             attachments['fields'].append({'title': 'Severity', 'value': data['severity']})
             if data['links']:
-                attachments['fields'].append({'title': 'Links', 'value': ' '.join(data['links'])})
+                if data['type'] == 'eyewitness_screenshot_diff':
+                    attachments['fields'].append({'title': 'Links', 'value': gen_eyewitness_diff(data['links'])})
+                else:
+                    attachments['fields'].append({'title': 'Links', 'value': ' '.join(data['links'])})
             if data['severity'] in COLOR_MAPPING:
                 attachments['color'] = COLOR_MAPPING[data['severity']]
             attachments['fields'].append({'title': 'Patrowl finding link', 'value': '{}/findings/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, data['id'])})
@@ -137,4 +164,4 @@ def slack_alert(report, object_type):
 if __name__ == '__main__':
     ASSETS = get_assets_from_groups()
     slack_alert(get_new_assets(ASSETS), 'asset')
-    slack_alert(get_new_findings(ASSETS, ['low', 'medium', 'high']), 'finding')
+    slack_alert(get_new_findings(ASSETS, ['medium', 'high']), 'finding')

@@ -17,7 +17,6 @@ import urllib
 from dateutil.parser import parse
 import urllib3
 from patrowl4py.api import PatrowlManagerApi
-# from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 
 # Own libraries
 import settings
@@ -27,13 +26,14 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.0.4'
+VERSION = '1.0.5'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
     auth_token=settings.PATROWL_APITOKEN
 )
 
+logging.basicConfig()
 LOGGER = logging.getLogger('patrowl-scan-scheduler')
 
 def get_period_from_title(title):

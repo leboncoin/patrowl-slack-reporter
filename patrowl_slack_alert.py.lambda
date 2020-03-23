@@ -24,7 +24,7 @@ from patrowl4py.api import PatrowlManagerApi
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '2.1.0'
+VERSION = '2.1.1'
 
 PATROWL_APITOKEN = os.environ['PATROWL_APITOKEN']
 PATROWL_PRIVATE_ENDPOINT = os.environ['PATROWL_PRIVATE_ENDPOINT']
@@ -52,6 +52,7 @@ PATROWL_API = PatrowlManagerApi(
     auth_token=PATROWL_APITOKEN
 )
 
+logging.basicConfig()
 LOGGER = logging.getLogger('patrowl-slack-alert')
 
 SESSION = Session()

@@ -15,7 +15,6 @@ import logging
 # Third party library imports
 from dateutil.parser import parse
 from patrowl4py.api import PatrowlManagerApi
-# from Patrowl4py.patrowl4py.api import PatrowlManagerApi
 from pytz import timezone
 from requests import Session
 import urllib3
@@ -28,7 +27,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.2.1'
+VERSION = '1.2.2'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -37,6 +36,7 @@ PATROWL_API = PatrowlManagerApi(
 
 WARNINGS_TYPE_BLACKLIST = []
 
+logging.basicConfig()
 LOGGER = logging.getLogger('patrowl-asset-lifecycle')
 
 SESSION = Session()
