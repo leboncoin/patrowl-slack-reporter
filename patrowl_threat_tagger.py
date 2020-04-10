@@ -19,7 +19,7 @@ import sys
 
 # Third party library imports
 from dateutil.parser import parse
-from dns.resolver import query, NoAnswer, NoNameservers, NXDOMAIN
+from dns.resolver import query, NoAnswer, NoNameservers, NXDOMAIN, Resolver
 from dns.exception import DNSException
 from patrowl4py.api import PatrowlManagerApi
 from requests import Session
@@ -33,7 +33,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.3.2'
+VERSION = '1.5.0'
 
 logging.basicConfig()
 LOGGER = logging.getLogger('patrowl-threat-tagger')
@@ -100,19 +100,31 @@ def get_findings(assets):
     return assets_findings
 
 
-def fqdn_ips(fqdn):
+def resolve_fqdn_ip(fqdn, resolver_name=None, resolver=None):
     """
     Returns the list of IPs for a fqdn
     """
     resolved_ips = list()
-    try:
-        for ip_address in query(fqdn):
-            resolved_ips.append(str(ip_address))
-    except (NoAnswer, NoNameservers, NXDOMAIN):
-        return 'No IP'
-    except DNSException as dns_error:
-        LOGGER.critical('DNS error: %s', dns_error)
-        return 'DNS error'
+
+    if not resolver:
+        try:
+            resolved_ips_result = query(fqdn)
+        except (NoAnswer, NoNameservers, NXDOMAIN):
+            return 'No IP'
+        except DNSException as dns_error:
+            LOGGER.critical('DNS error: %s', dns_error)
+            return 'DNS error'
+    else:
+        try:
+            resolved_ips_result = resolver.query(fqdn)
+        except (NoAnswer, NoNameservers, NXDOMAIN):
+            return 'No IP'
+        except DNSException as dns_error:
+            LOGGER.critical('DNS error with %s: %s', resolver_name, dns_error)
+            return 'DNS error'
+
+    for ip_address in resolved_ips_result:
+        resolved_ips.append(str(ip_address))
 
     resolved_ips.sort()
 
@@ -122,7 +134,46 @@ def fqdn_ips(fqdn):
     return 'No IP'
 
 
+def fqdn_ip(fqdn):
+    """
+    Returns the list of IPs for a fqdn
+    """
+    resolvers = dict()
+    resolvers['local'] = dict()
+    resolvers['local']['resolver'] = None
+    resolvers['private'] = dict()
+
+    private_resolver = Resolver()
+    private_resolver.nameservers = settings.PRIVATE_DNS_RESOLVERS
+    resolvers['private']['resolver'] = private_resolver
+
+    for resolver_name in resolvers:
+        resolvers[resolver_name]['result'] = resolve_fqdn_ip(
+            fqdn,
+            resolver=resolvers[resolver_name]['resolver'],
+            resolver_name=resolver_name)
+
+    result_quorum = dict()
+    result_quorum['No IP'] = 0
+    result_ip = 'No IP'
+    for resolver_name in resolvers:
+        if resolvers[resolver_name]['result'] == 'No IP':
+            return 'No IP'
+        _ip = resolvers[resolver_name]['result']
+        if _ip not in result_quorum:
+            result_quorum[_ip] = 1
+        else:
+            result_quorum[_ip] += 1
+        if _ip != result_ip and result_quorum[_ip] > result_quorum[result_ip]:
+            result_ip = _ip
+
+    return result_ip
+
+
 def add_finding(asset, title, criticity):
+    """
+    This function is a wrapper around PATROWL_API.add_finding
+    """
     try:
         PATROWL_API.add_finding(
             title,
@@ -135,6 +186,9 @@ def add_finding(asset, title, criticity):
 
 
 def delete_finding(finding_id):
+    """
+    This function is a wrapper around PATROWL_API.delete_finding
+    """
     try:
         PATROWL_API.delete_finding(
             finding_id)
@@ -143,6 +197,9 @@ def delete_finding(finding_id):
 
 
 def generate_random_codename(seed):
+    """
+    This function returns a random codename
+    """
     random.seed(seed)
     with open('adjectives.txt', 'r') as adjectives_file:
         adjectives = adjectives_file.read()
@@ -158,7 +215,7 @@ def update_ip_finding(asset, ct_findings):
     This function update 'Current IP: xx.xx.xx.xx'
     """
     asset_findings = ct_findings[asset['id']]
-    current_ip = fqdn_ips(asset['name'])
+    current_ip = fqdn_ip(asset['name'])
     # Abort if DNS is in error
     if current_ip == 'DNS error':
         return ct_findings

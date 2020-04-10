@@ -9,6 +9,7 @@ SLACK_WEBHOOK = 'https://hooks.slack.com/services/XXXXXX/YYYYY/ZZZZZZZZZZZZZZZZZ
 
 # Others
 TIMEZONE = 'Europe/Paris'
+PRIVATE_DNS_RESOLVERS = ['8.8.8.8']
 
 # Patrowl Asset Lifecycle
 PAL_GROUP_ID = 1
