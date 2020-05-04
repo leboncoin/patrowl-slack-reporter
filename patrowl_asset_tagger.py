@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 """
-Patrowl Threat Tagger
+Patrowl Asset Tagger
 
 Copyright (c) 2020 Nicolas Beguier
 Licensed under the Apache License
@@ -19,7 +19,7 @@ import sys
 
 # Third party library imports
 from dateutil.parser import parse
-from dns.resolver import query, NoAnswer, NoNameservers, NXDOMAIN, Resolver
+from dns.resolver import NoAnswer, NoNameservers, NXDOMAIN, Resolver
 from dns.exception import DNSException
 from patrowl4py.api import PatrowlManagerApi
 from requests import Session
@@ -33,17 +33,17 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.5.0'
+VERSION = '1.6.3'
 
 logging.basicConfig()
-LOGGER = logging.getLogger('patrowl-threat-tagger')
+LOGGER = logging.getLogger('patrowl-asset-tagger')
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
     auth_token=settings.PATROWL_APITOKEN
 )
 SESSION = Session()
 
-ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.PTT_GROUP_ID)['name']
+ASSETGROUP_BASE_NAME = PATROWL_API.get_assetgroup_by_id(settings.PAT_GROUP_ID)['name']
 COLOR_MAPPING = {
     'info': '#b4c2bf',
     'low': '#4287f5',
@@ -94,34 +94,28 @@ def get_findings(assets):
     for asset in assets:
         assets_findings[asset['id']] = list()
         for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
-            if 'title' in finding and 'Current IP: ' in finding['title'] \
-                or 'Threat codename: ' in finding['title']:
+            if 'title' in finding and ( \
+                'Current IP: ' in finding['title'] \
+                or 'Threat codename: ' in finding['title'] \
+                or 'Some domain has been screenshoted by eyewitness' in finding['title'] \
+                or 'Domain for sale:' in finding['title']):
                 assets_findings[asset['id']].append(finding)
     return assets_findings
 
 
-def resolve_fqdn_ip(fqdn, resolver_name=None, resolver=None):
+def resolve_fqdn_ip(fqdn, resolver, resolver_name):
     """
     Returns the list of IPs for a fqdn
     """
     resolved_ips = list()
 
-    if not resolver:
-        try:
-            resolved_ips_result = query(fqdn)
-        except (NoAnswer, NoNameservers, NXDOMAIN):
-            return 'No IP'
-        except DNSException as dns_error:
-            LOGGER.critical('DNS error: %s', dns_error)
-            return 'DNS error'
-    else:
-        try:
-            resolved_ips_result = resolver.query(fqdn)
-        except (NoAnswer, NoNameservers, NXDOMAIN):
-            return 'No IP'
-        except DNSException as dns_error:
-            LOGGER.critical('DNS error with %s: %s', resolver_name, dns_error)
-            return 'DNS error'
+    try:
+        resolved_ips_result = resolver.query(fqdn)
+    except (NoAnswer, NoNameservers, NXDOMAIN):
+        return 'No IP'
+    except DNSException as dns_error:
+        LOGGER.critical('DNS error with %s resolver when resolving %s: %s', resolver_name, fqdn, dns_error)
+        return 'DNS error'
 
     for ip_address in resolved_ips_result:
         resolved_ips.append(str(ip_address))
@@ -140,18 +134,24 @@ def fqdn_ip(fqdn):
     """
     resolvers = dict()
     resolvers['local'] = dict()
-    resolvers['local']['resolver'] = None
     resolvers['private'] = dict()
 
+    local_resolver = Resolver()
+    local_resolver.timeout = 2
+    local_resolver.lifetime = 2
+    resolvers['local']['resolver'] = local_resolver
+
     private_resolver = Resolver()
+    private_resolver.timeout = 2
+    private_resolver.lifetime = 2
     private_resolver.nameservers = settings.PRIVATE_DNS_RESOLVERS
     resolvers['private']['resolver'] = private_resolver
 
     for resolver_name in resolvers:
         resolvers[resolver_name]['result'] = resolve_fqdn_ip(
             fqdn,
-            resolver=resolvers[resolver_name]['resolver'],
-            resolver_name=resolver_name)
+            resolvers[resolver_name]['resolver'],
+            resolver_name)
 
     result_quorum = dict()
     result_quorum['No IP'] = 0
@@ -170,29 +170,37 @@ def fqdn_ip(fqdn):
     return result_ip
 
 
-def add_finding(asset, title, criticity):
+def add_finding(asset, title, criticity, test_only=False):
     """
     This function is a wrapper around PATROWL_API.add_finding
     """
+    if test_only:
+        LOGGER.warning('[TEST-ONLY] Add finding for asset #%s', asset['id'])
+        return
     try:
         PATROWL_API.add_finding(
             title,
             title,
-            'patrowl_threat_tagger',
+            'patrowl_asset_tagger',
             criticity,
             asset['id'])
     except:
+        LOGGER.critical('Error during add finding for asset #%s', asset['id'])
         pass
 
 
-def delete_finding(finding_id):
+def delete_finding(finding_id, test_only=False):
     """
     This function is a wrapper around PATROWL_API.delete_finding
     """
+    if test_only:
+        LOGGER.warning('[TEST-ONLY] Delete finding #%s', finding_id)
+        return
     try:
         PATROWL_API.delete_finding(
             finding_id)
     except:
+        LOGGER.critical('Error during delete finding #%s', finding_id)
         pass
 
 
@@ -210,7 +218,66 @@ def generate_random_codename(seed):
     return '{} {}'.format(adjective, animal)
 
 
-def update_ip_finding(asset, ct_findings):
+def update_for_sale_finding(asset, ct_findings, test_only=False):
+    """
+    This function update 'Domain for sale: True|False'
+    """
+    asset_findings = ct_findings[asset['id']]
+    last_screenshot_epoch = 0
+    last_screenshot_finding = None
+    is_for_sale = False
+    add_for_sale_finding = True
+    current_for_sale_finding = None
+    current_is_for_sale = False
+    try:
+        for finding in asset_findings:
+            if 'Some domain has been screenshoted by eyewitness' in finding['title'] \
+                and int(re.match('^\[([0-9]+)\]', finding['title']).group(1)) > last_screenshot_epoch:
+                last_screenshot_epoch = int(re.match('^\[([0-9]+)\]', finding['title']).group(1))
+                last_screenshot_finding = finding
+                is_for_sale = 'Domain for sale: True' in last_screenshot_finding['description']
+            elif 'Domain for sale:' in finding['title']:
+                add_for_sale_finding = False
+                current_for_sale_finding = finding
+                current_is_for_sale = finding['title'] == 'Domain for sale: True'
+    except Exception as err_msg:
+        LOGGER.critical(err_msg)
+        return ct_findings
+
+    if add_for_sale_finding:
+        if last_screenshot_epoch == 0 or not is_for_sale:
+            LOGGER.warning('Add "Domain for sale: False" for %s', asset['name'])
+            add_finding(asset, 'Domain for sale: False', 'info', test_only=test_only)
+            ct_findings[asset['id']].append({'title': 'Domain for sale: False'})
+            return ct_findings
+        LOGGER.warning('Add "Domain for sale: True" for %s', asset['name'])
+        add_finding(asset, 'Domain for sale: True', 'info', test_only=test_only)
+        ct_findings[asset['id']].append({'title': 'Domain for sale: True'})
+        return ct_findings
+
+    # Do nothing
+    if is_for_sale == current_is_for_sale:
+        return ct_findings
+
+    # Rename "Domain for sale" finding
+    LOGGER.warning('Rename "Domain for sale: %s" for %s', is_for_sale, asset['name'])
+    for i, finding in enumerate(ct_findings[asset['id']]):
+        if 'Domain for sale' in finding['title']:
+            ct_findings[asset['id']][i] = {
+                'severity': current_for_sale_finding['severity'],
+                'title': current_for_sale_finding['title'],
+                'updated_at': current_for_sale_finding['updated_at'],
+                'asset': asset['id']}
+    delete_finding(current_for_sale_finding['id'], test_only=test_only)
+    add_finding(
+        asset,
+        'Domain for sale: {}'.format(is_for_sale),
+        current_for_sale_finding['severity'], test_only=test_only)
+    ct_findings[asset['id']].append({'title': 'Domain for sale: {}'.format(is_for_sale)})
+
+    return ct_findings
+
+def update_ip_finding(asset, ct_findings, test_only=False):
     """
     This function update 'Current IP: xx.xx.xx.xx'
     """
@@ -226,7 +293,7 @@ def update_ip_finding(asset, ct_findings):
         if 'Current IP: ' in finding['title'] \
             and finding['title'] != 'Current IP: {}'.format(current_ip):
             LOGGER.warning('Remove "Current IP" finding for %s', asset['name'])
-            delete_finding(finding['id'])
+            delete_finding(finding['id'], test_only=test_only)
             ct_findings[asset['id']][i]['title'] = 'Current IP: {}'.format(current_ip)
         elif finding['title'] == 'Current IP: {}'.format(current_ip):
             add_current_ip_finding = False
@@ -235,7 +302,7 @@ def update_ip_finding(asset, ct_findings):
 
     if add_current_ip_finding:
         LOGGER.warning('Add "Current IP: %s" for %s', current_ip, asset['name'])
-        add_finding(asset, 'Current IP: {}'.format(current_ip), 'info')
+        add_finding(asset, 'Current IP: {}'.format(current_ip), 'info', test_only=test_only)
         ct_findings[asset['id']].append({'title': 'Current IP: {}'.format(current_ip)})
 
     # Check if "Threat codename" needs an update
@@ -251,21 +318,23 @@ def update_ip_finding(asset, ct_findings):
             for i, finding in enumerate(ct_findings[asset['id']]):
                 if 'Threat codename' in finding['title']:
                     ct_findings[asset['id']][i] = {
+                        'id': threat_codename['id'],
                         'severity': threat_codename['severity'],
                         'title': threat_codename['title'],
+                        'description': threat_codename['description'],
                         'updated_at': threat_codename['updated_at'],
                         'asset': asset['id']}
-            delete_finding(threat_codename['id'])
+            delete_finding(threat_codename['id'], test_only=test_only)
             add_finding(
                 asset,
                 threat_codename['title'].replace(old_ip, current_ip),
-                threat_codename['severity'])
+                threat_codename['severity'], test_only=test_only)
             ct_findings[asset['id']].append({'title': 'Current IP: {}'.format(current_ip)})
 
     return ct_findings
 
 
-def update_current_threat(asset, ct_findings):
+def update_current_threat(asset, ct_findings, test_only=False):
     """
     This function update 'Threat codename: xxxx (xx.xx.xx.xx)'
     """
@@ -305,26 +374,26 @@ def update_current_threat(asset, ct_findings):
         and current_ip != 'No IP':
         codename = generate_random_codename(current_ip)
         LOGGER.warning('New threat : "Threat codename: %s (%s)" for %s', codename, current_ip, asset['name'])
-        slack_alert('New threat', 'Threat codename: {} ({})'.format(codename, current_ip), asset)
+        slack_alert('New threat', 'Threat codename: {} ({})'.format(codename, current_ip), asset, test_only=test_only)
         ct_findings[asset['id']].append({
             'severity': 'high',
             'title': 'Threat codename: {} ({})'.format(codename, current_ip),
             'updated_at': datetime.now().isoformat(),
             'asset': asset['id']})
-        add_finding(asset, 'Threat codename: {} ({})'.format(codename, current_ip), 'high')
+        add_finding(asset, 'Threat codename: {} ({})'.format(codename, current_ip), 'high', test_only=test_only)
 
     # New asset in existing threat
     elif not threat_codename['present'] \
         and threat_codename['new_finding'] is not None \
         and current_ip != 'No IP':
         LOGGER.warning('New asset in existing threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
-        slack_alert('New asset in existing threat', threat_codename['new_finding']['title'], asset)
+        slack_alert('New asset in existing threat', threat_codename['new_finding']['title'], asset, test_only=test_only)
         ct_findings[asset['id']].append({
             'severity': threat_codename['new_finding']['severity'],
             'title': threat_codename['new_finding']['title'],
             'updated_at': threat_codename['new_finding']['updated_at'],
             'asset': asset['id']})
-        add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'])
+        add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'], test_only=test_only)
 
     # Rename current threat, only if different
     elif threat_codename['present'] \
@@ -334,7 +403,7 @@ def update_current_threat(asset, ct_findings):
         and (threat_codename['new_finding']['title'] != threat_codename['finding']['title']\
             or threat_codename['new_finding']['severity'] != threat_codename['finding']['severity']):
         LOGGER.warning('Rename current threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
-        slack_alert('Rename current threat', threat_codename['new_finding']['title'], asset, criticity='info')
+        slack_alert('Rename current threat', threat_codename['new_finding']['title'], asset, criticity='info', test_only=test_only)
         for i, finding in enumerate(ct_findings[asset['id']]):
             if 'Threat codename' in finding['title']:
                 ct_findings[asset['id']][i] = {
@@ -342,12 +411,12 @@ def update_current_threat(asset, ct_findings):
                     'title': threat_codename['new_finding']['title'],
                     'updated_at': threat_codename['new_finding']['updated_at'],
                     'asset': asset['id']}
-        delete_finding(threat_codename['finding']['id'])
-        add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'])
+        delete_finding(threat_codename['finding']['id'], test_only=test_only)
+        add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'], test_only=test_only)
 
     return ct_findings
 
-def update_threat(asset, asset_findings, ct_findings):
+def update_threat(asset, asset_findings, ct_findings, test_only=False):
     """
     This function updates the threat of Base and Archived assets
     """
@@ -385,8 +454,8 @@ def update_threat(asset, asset_findings, ct_findings):
         and threat_codename['new_finding'] is not None \
         and current_ip != 'No IP':
         LOGGER.warning('New asset in existing threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
-        slack_alert('New asset in existing threat', threat_codename['new_finding']['title'], asset)
-        add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'])
+        slack_alert('New asset in existing threat', threat_codename['new_finding']['title'], asset, test_only=test_only)
+        add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'], test_only=test_only)
 
     # Rename current threat, only if different
     elif threat_codename['present'] \
@@ -396,20 +465,20 @@ def update_threat(asset, asset_findings, ct_findings):
         and (threat_codename['new_finding']['title'] != threat_codename['finding']['title'] \
             or threat_codename['new_finding']['severity'] != threat_codename['finding']['severity']):
         LOGGER.warning('Rename current threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
-        slack_alert('Rename current threat', threat_codename['new_finding']['title'], asset, criticity='info')
-        delete_finding(threat_codename['finding']['id'])
-        add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'])
+        slack_alert('Rename current threat', threat_codename['new_finding']['title'], asset, criticity='info', test_only=test_only)
+        delete_finding(threat_codename['finding']['id'], test_only=test_only)
+        add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'], test_only=test_only)
 
 
-def slack_alert(threat_type, threat_title, asset, criticity='high'):
+def slack_alert(threat_type, threat_title, asset, criticity='high', test_only=False):
     """
     Post report on Slack
     """
     payload = dict()
     payload['channel'] = settings.SLACK_CHANNEL
     payload['link_names'] = 1
-    payload['username'] = settings.PTT_SLACK_USERNAME
-    payload['icon_emoji'] = settings.PTT_SLACK_ICON_EMOJI
+    payload['username'] = settings.PAT_SLACK_USERNAME
+    payload['icon_emoji'] = settings.PAT_SLACK_ICON_EMOJI
 
     attachments = dict()
     attachments['pretext'] = '{} - {}'.format(threat_type, threat_title)
@@ -421,12 +490,16 @@ def slack_alert(threat_type, threat_title, asset, criticity='high'):
 
     payload['attachments'] = [attachments]
 
+    if test_only:
+        LOGGER.warning('[TEST-ONLY] Slack alert.')
+        LOGGER.warning(payload)
+        return True
     response = SESSION.post(settings.SLACK_WEBHOOK, data=json.dumps(payload))
 
     return response.ok
 
 
-def main():
+def main(test_only=False):
     """
     Main function
     """
@@ -436,7 +509,7 @@ def main():
 
     current_threats_group_id, archived_threats_group_id = get_group_ids()
 
-    base_assets = get_assets(settings.PTT_GROUP_ID)
+    base_assets = get_assets(settings.PAT_GROUP_ID)
     if current_threats_group_id is None or archived_threats_group_id is None:
         LOGGER.critical('run Patrowl Asset Lifecycle first')
         sys.exit(1)
@@ -448,19 +521,23 @@ def main():
     else:
         ct_findings = get_findings(ct_assets)
         for ct_asset in ct_assets:
-            ct_findings = update_ip_finding(ct_asset, ct_findings)
+            ct_findings = update_for_sale_finding(ct_asset, ct_findings, test_only=test_only)
+            ct_findings = update_ip_finding(ct_asset, ct_findings, test_only=test_only)
         for ct_asset in ct_assets:
-            ct_findings = update_current_threat(ct_asset, ct_findings)
+            ct_findings = update_current_threat(ct_asset, ct_findings, test_only=test_only)
 
         base_findings = get_findings(base_assets)
         for base_asset in base_assets:
-            update_ip_finding(base_asset, base_findings)
-            update_threat(base_asset, base_findings[base_asset['id']], ct_findings)
+            update_for_sale_finding(base_asset, base_findings, test_only=test_only)
+            update_ip_finding(base_asset, base_findings, test_only=test_only)
+            update_threat(base_asset, base_findings[base_asset['id']], ct_findings, test_only=test_only)
         at_findings = get_findings(at_assets)
         for at_asset in at_assets:
-            update_ip_finding(at_asset, at_findings)
-            update_threat(at_asset, at_findings[at_asset['id']], ct_findings)
+            update_for_sale_finding(at_asset, at_findings, test_only=test_only)
+            update_ip_finding(at_asset, at_findings, test_only=test_only)
+            update_threat(at_asset, at_findings[at_asset['id']], ct_findings, test_only=test_only)
 
 
 if __name__ == '__main__':
-    main()
+    DEBUG = len(sys.argv) > 1 and sys.argv[1] == '--test-only'
+    main(test_only=DEBUG)

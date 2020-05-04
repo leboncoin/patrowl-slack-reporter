@@ -17,6 +17,11 @@ PAL_MAX_DAYS = 10
 PAL_SLACK_ICON_EMOJI = ':truck:'
 PAL_SLACK_USERNAME = 'Patrowl Asset Lifecycle'
 
+# Patrowl Asset Tagger
+PAT_GROUP_ID = 1
+PAT_SLACK_ICON_EMOJI = ':pencil2:'
+PAT_SLACK_USERNAME = 'Patrowl Asset Tagger'
+
 # Patrowl Slack Alert
 PSA_SLACK_ICON_EMOJI = ':sleuth_or_spy:'
 PSA_SLACK_USERNAME = 'Patrowl Slack Reporter'
@@ -26,8 +31,3 @@ PSA_LIST_GROUP_ID = [1, 3, 4]
 PTR_GROUP_ID = 1
 PTR_SLACK_ICON_EMOJI = ':newspaper:'
 PTR_SLACK_USERNAME = 'Patrowl Threat Reporter'
-
-# Patrowl Threat Tagger
-PTT_GROUP_ID = 1
-PTT_SLACK_ICON_EMOJI = ':pencil2:'
-PTT_SLACK_USERNAME = 'Patrowl Threat Tagger'

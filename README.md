@@ -62,5 +62,5 @@ python3 patrowl_slack_alert.py
 
 python3 patrowl_asset_lifecycle.py
 
-python3 patrowl_threat_tagger.py
+python3 patrowl_asset_tagger.py
 ```

@@ -1,0 +1,6 @@
+# Patrowl
+PATROWL_APITOKEN = 'xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx'
+PATROWL_PRIVATE_ENDPOINT = 'https://patrowl.domain.lan'
+PATROWL_PUBLIC_ENDPOINT = 'https://patrowl.domain.net'
+
+ASSETGROUP_ID = 1

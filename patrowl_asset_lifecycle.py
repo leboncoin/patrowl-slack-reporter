@@ -11,6 +11,7 @@ Written by Nicolas BEGUIER (nicolas_beguier@hotmail.com)
 from datetime import datetime
 import json
 import logging
+import sys
 
 # Third party library imports
 from dateutil.parser import parse
@@ -27,7 +28,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.2.2'
+VERSION = '1.3.0'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -127,7 +128,16 @@ def current_ip_exists(asset):
             return False
     return True
 
-def slack_alert(asset, asset_type, asset_destination, criticity='high'):
+def domain_for_sale(asset):
+    """
+    Returns True if finding 'Domain for sale: True' exists
+    """
+    for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
+        if finding['title'] == 'Domain for sale: True':
+            return True
+    return False
+
+def slack_alert(asset, asset_type, asset_destination, criticity='high', test_only=False):
     """
     Post report on Slack
     """
@@ -147,14 +157,22 @@ def slack_alert(asset, asset_type, asset_destination, criticity='high'):
 
     payload['attachments'] = [attachments]
 
+    if test_only:
+        LOGGER.warning('[TEST-ONLY] Slack alert.')
+        LOGGER.warning(payload)
+        return True
+
     response = SESSION.post(settings.SLACK_WEBHOOK, data=json.dumps(payload))
 
     return response.ok
 
-def move_asset(asset, src_group_id, src_group_name, dst_group_id, dst_group_name):
+def move_asset(asset, src_group_id, src_group_name, dst_group_id, dst_group_name, test_only=False):
     """
     This function moves assets from one assetgroup to another
     """
+    if test_only:
+        LOGGER.warning('[TEST-ONLY] Move asset.')
+        return
     if dst_group_id is None:
         PATROWL_API.add_assetgroup(
             dst_group_name,
@@ -166,16 +184,152 @@ def move_asset(asset, src_group_id, src_group_name, dst_group_id, dst_group_name
         new_assets = [asset['id']]
         for current_asset in PATROWL_API.get_assetgroup_by_id(dst_group_id)['assets']:
             new_assets.append(current_asset['id'])
-        PATROWL_API.edit_assetgroup(dst_group_id, dst_group_name, dst_group_name, 'medium', new_assets)
+        try:
+            PATROWL_API.edit_assetgroup(dst_group_id, dst_group_name, dst_group_name, 'medium', new_assets)
+        except:
+            LOGGER.critical('Error during edit_assetgroup %s', dst_group_name)
 
     # Remove asset from old assetgroup
     new_assets = list()
     for current_asset in PATROWL_API.get_assetgroup_by_id(src_group_id)['assets']:
         if current_asset['id'] != asset['id']:
             new_assets.append(current_asset['id'])
-    PATROWL_API.edit_assetgroup(src_group_id, src_group_name, src_group_name, 'medium', new_assets)
+    try:
+        PATROWL_API.edit_assetgroup(src_group_id, src_group_name, src_group_name, 'medium', new_assets)
+    except:
+        LOGGER.critical('Error during edit_assetgroup %s', src_group_name)
 
-def main():
+
+def base_asset_lifecycle(base_assets, archived_threats_group_id, current_threats_group_id, test_only=False):
+    """
+    Base asset handler
+    """
+    for base_asset in base_assets:
+        # Base Asset: if "No IP" or "Domain for sale: True" => Archived Threat
+        if not current_ip_exists(base_asset) or domain_for_sale(base_asset):
+            resp_ok = slack_alert(base_asset, 'New', '{} archived threats'.format(ASSETGROUP_BASE_NAME), criticity='low', test_only=test_only)
+            if not resp_ok:
+                continue
+            LOGGER.warning(
+                'move asset %s from %s to %s',
+                base_asset,
+                ASSETGROUP_BASE_NAME,
+                '{} archived threats'.format(ASSETGROUP_BASE_NAME))
+            move_asset(
+                base_asset,
+                settings.PAL_GROUP_ID,
+                ASSETGROUP_BASE_NAME,
+                archived_threats_group_id,
+                '{} archived threats'.format(ASSETGROUP_BASE_NAME),
+                test_only=test_only)
+            if archived_threats_group_id is None:
+                _, archived_threats_group_id = get_group_ids()
+        # Base Asset: if recent 'high' finding => Current Threat
+        elif has_recent_findings(base_asset, 'high', settings.PAL_MAX_DAYS):
+            resp_ok = slack_alert(base_asset, 'New', '{} current threats'.format(ASSETGROUP_BASE_NAME), test_only=test_only)
+            if not resp_ok:
+                continue
+            LOGGER.warning(
+                'move asset %s from %s to %s',
+                base_asset,
+                ASSETGROUP_BASE_NAME,
+                '{} current threats'.format(ASSETGROUP_BASE_NAME))
+            move_asset(
+                base_asset,
+                settings.PAL_GROUP_ID,
+                ASSETGROUP_BASE_NAME,
+                current_threats_group_id,
+                '{} current threats'.format(ASSETGROUP_BASE_NAME),
+                test_only=test_only)
+            if current_threats_group_id is None:
+                current_threats_group_id, _ = get_group_ids()
+        # Base Asset: if only old 'high' findings => Archived Threat
+        elif has_old_findings(base_asset, 'high', settings.PAL_MAX_DAYS):
+            resp_ok = slack_alert(base_asset, 'New', '{} archived threats'.format(ASSETGROUP_BASE_NAME), criticity='low', test_only=test_only)
+            if not resp_ok:
+                continue
+            LOGGER.warning(
+                'move asset %s from %s to %s',
+                base_asset,
+                ASSETGROUP_BASE_NAME,
+                '{} archived threats'.format(ASSETGROUP_BASE_NAME))
+            move_asset(
+                base_asset,
+                settings.PAL_GROUP_ID,
+                ASSETGROUP_BASE_NAME,
+                archived_threats_group_id,
+                '{} archived threats'.format(ASSETGROUP_BASE_NAME),
+                test_only=test_only)
+            if archived_threats_group_id is None:
+                _, archived_threats_group_id = get_group_ids()
+
+
+def archived_asset_lifecycle(at_assets, archived_threats_group_id, current_threats_group_id, test_only=False):
+    """
+    Archived asset handler
+    """
+    if not at_assets:
+        return
+    for archived_asset in at_assets:
+        has_recent_high_finding = has_recent_findings(archived_asset, 'high', settings.PAL_MAX_DAYS)
+        has_current_ip = current_ip_exists(archived_asset)
+        is_for_sale = domain_for_sale(archived_asset)
+        # Archive Asset: Ignore no recent findings or without IP or domain for sale
+        if not has_recent_high_finding or not has_current_ip or is_for_sale:
+            continue
+        # Archive Asset: in any other case, this is a current threat
+        resp_ok = slack_alert(archived_asset, 'Archived', '{} current threats'.format(ASSETGROUP_BASE_NAME), test_only=test_only)
+        if not resp_ok:
+            continue
+        LOGGER.warning(
+            'move asset %s from %s to %s',
+            archived_asset,
+            '{} archived threats'.format(ASSETGROUP_BASE_NAME),
+            '{} current threats'.format(ASSETGROUP_BASE_NAME))
+        move_asset(
+            archived_asset,
+            archived_threats_group_id,
+            '{} archived threats'.format(ASSETGROUP_BASE_NAME),
+            current_threats_group_id,
+            '{} current threats'.format(ASSETGROUP_BASE_NAME),
+            test_only=test_only)
+        if current_threats_group_id is None:
+            current_threats_group_id, _ = get_group_ids()
+
+def threat_asset_lifecycle(ct_assets, archived_threats_group_id, current_threats_group_id, test_only=False):
+    """
+    Threat asset handler
+    """
+    if not ct_assets:
+        return
+    for threat_asset in ct_assets:
+        has_recent_high_finding = has_recent_findings(threat_asset, 'high', settings.PAL_MAX_DAYS)
+        has_current_ip = current_ip_exists(threat_asset)
+        is_for_sale = domain_for_sale(threat_asset)
+        # Threat Asset: Ignore recent findings, with IP and not for sale
+        if has_recent_high_finding and has_current_ip and not is_for_sale:
+            continue
+        # Threat Asset: in any other case, this is an archived threat
+        resp_ok = slack_alert(threat_asset, 'Current', '{} archived threats'.format(ASSETGROUP_BASE_NAME), criticity='low', test_only=test_only)
+        if not resp_ok:
+            continue
+        LOGGER.warning(
+            'move asset %s from %s to %s',
+            threat_asset,
+            '{} current threats'.format(ASSETGROUP_BASE_NAME),
+            '{} archived threats'.format(ASSETGROUP_BASE_NAME))
+        move_asset(
+            threat_asset,
+            current_threats_group_id,
+            '{} current threats'.format(ASSETGROUP_BASE_NAME),
+            archived_threats_group_id,
+            '{} archived threats'.format(ASSETGROUP_BASE_NAME),
+            test_only=test_only)
+        if archived_threats_group_id is None:
+            _, archived_threats_group_id = get_group_ids()
+
+
+def main(test_only=False):
     """
     Main function
     """
@@ -192,65 +346,23 @@ def main():
     if not base_assets and not ct_assets and not at_assets:
         LOGGER.warning('no assets')
     else:
-        for base_asset in base_assets:
-            if has_recent_findings(base_asset, 'high', settings.PAL_MAX_DAYS):
-                resp_ok = slack_alert(base_asset, 'New', '{} current threats'.format(ASSETGROUP_BASE_NAME))
-                if not resp_ok:
-                    continue
-                LOGGER.warning('move asset {} from {} to {}'.format(base_asset, ASSETGROUP_BASE_NAME, '{} current threats'.format(ASSETGROUP_BASE_NAME)))
-                move_asset(
-                    base_asset,
-                    settings.PAL_GROUP_ID,
-                    ASSETGROUP_BASE_NAME,
-                    current_threats_group_id,
-                    '{} current threats'.format(ASSETGROUP_BASE_NAME))
-                if current_threats_group_id is None:
-                    current_threats_group_id, _ = get_group_ids()
-            elif has_old_findings(base_asset, 'high', settings.PAL_MAX_DAYS):
-                resp_ok = slack_alert(base_asset, 'New', '{} archived threats'.format(ASSETGROUP_BASE_NAME), criticity='low')
-                if not resp_ok:
-                    continue
-                LOGGER.warning('move asset {} from {} to {}'.format(base_asset, ASSETGROUP_BASE_NAME, '{} archived threats'.format(ASSETGROUP_BASE_NAME)))
-                move_asset(
-                    base_asset,
-                    settings.PAL_GROUP_ID,
-                    ASSETGROUP_BASE_NAME,
-                    archived_threats_group_id,
-                    '{} archived threats'.format(ASSETGROUP_BASE_NAME))
-                if archived_threats_group_id is None:
-                    _, archived_threats_group_id = get_group_ids()
-        if at_assets:
-            for archived_asset in at_assets:
-                if not has_recent_findings(archived_asset, 'high', settings.PAL_MAX_DAYS) or not current_ip_exists(archived_asset):
-                    continue
-                resp_ok = slack_alert(archived_asset, 'Archived', '{} current threats'.format(ASSETGROUP_BASE_NAME))
-                if not resp_ok:
-                    continue
-                LOGGER.warning('move asset {} from {} to {}'.format(archived_asset, '{} archived threats'.format(ASSETGROUP_BASE_NAME), '{} current threats'.format(ASSETGROUP_BASE_NAME)))
-                move_asset(
-                    archived_asset,
-                    archived_threats_group_id,
-                    '{} archived threats'.format(ASSETGROUP_BASE_NAME),
-                    current_threats_group_id,
-                    '{} current threats'.format(ASSETGROUP_BASE_NAME))
-                if current_threats_group_id is None:
-                    current_threats_group_id, _ = get_group_ids()
-        if ct_assets:
-            for threat_asset in ct_assets:
-                if has_recent_findings(threat_asset, 'high', settings.PAL_MAX_DAYS) and current_ip_exists(threat_asset):
-                    continue
-                resp_ok = slack_alert(threat_asset, 'Current', '{} archived threats'.format(ASSETGROUP_BASE_NAME), criticity='low')
-                if not resp_ok:
-                    continue
-                LOGGER.warning('move asset {} from {} to {}'.format(threat_asset, '{} current threats'.format(ASSETGROUP_BASE_NAME), '{} archived threats'.format(ASSETGROUP_BASE_NAME)))
-                move_asset(
-                    threat_asset,
-                    current_threats_group_id,
-                    '{} current threats'.format(ASSETGROUP_BASE_NAME),
-                    archived_threats_group_id,
-                    '{} archived threats'.format(ASSETGROUP_BASE_NAME))
-                if archived_threats_group_id is None:
-                    _, archived_threats_group_id = get_group_ids()
+        base_asset_lifecycle(
+            base_assets,
+            archived_threats_group_id,
+            current_threats_group_id,
+            test_only=test_only)
+        archived_asset_lifecycle(
+            at_assets,
+            archived_threats_group_id,
+            current_threats_group_id,
+            test_only=test_only)
+        threat_asset_lifecycle(
+            ct_assets,
+            archived_threats_group_id,
+            current_threats_group_id,
+            test_only=test_only)
+
 
 if __name__ == '__main__':
-    main()
+    DEBUG = len(sys.argv) > 1 and sys.argv[1] == '--test-only'
+    main(test_only=DEBUG)
