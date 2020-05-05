@@ -18,7 +18,6 @@ import re
 import sys
 
 # Third party library imports
-from dateutil.parser import parse
 from dns.resolver import NoAnswer, NoNameservers, NXDOMAIN, Resolver
 from dns.exception import DNSException
 from patrowl4py.api import PatrowlManagerApi
@@ -33,7 +32,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.6.3'
+VERSION = '1.7.0'
 
 logging.basicConfig()
 LOGGER = logging.getLogger('patrowl-asset-tagger')
@@ -287,7 +286,7 @@ def update_ip_finding(asset, ct_findings, test_only=False):
     if current_ip == 'DNS error':
         return ct_findings
     add_current_ip_finding = True
-    threat_codename = None
+    threat_codename = dict()
     for i, finding in enumerate(asset_findings):
         # Update 'Current IP' finding
         if 'Current IP: ' in finding['title'] \
@@ -297,7 +296,8 @@ def update_ip_finding(asset, ct_findings, test_only=False):
             ct_findings[asset['id']][i]['title'] = 'Current IP: {}'.format(current_ip)
         elif finding['title'] == 'Current IP: {}'.format(current_ip):
             add_current_ip_finding = False
-        elif 'Threat codename: ' in finding['title']:
+        elif 'Threat codename: ' in finding['title'] and ( \
+            'id' not in threat_codename or threat_codename['id'] < finding['id']):
             threat_codename = finding
 
     if add_current_ip_finding:
@@ -305,8 +305,9 @@ def update_ip_finding(asset, ct_findings, test_only=False):
         add_finding(asset, 'Current IP: {}'.format(current_ip), 'info', test_only=test_only)
         ct_findings[asset['id']].append({'title': 'Current IP: {}'.format(current_ip)})
 
+
     # Check if "Threat codename" needs an update
-    if threat_codename is not None and current_ip != 'No IP':
+    if threat_codename and current_ip != 'No IP':
         old_ip = current_ip
         match = re.search(re.compile('\((.*)\)'), threat_codename['title'])
         # Should always matches
@@ -340,14 +341,14 @@ def update_current_threat(asset, ct_findings, test_only=False):
     """
     asset_findings = ct_findings[asset['id']]
     threat_codename = dict()
-    threat_codename['present'] = False
-    threat_codename['finding'] = None
-    threat_codename['new_finding'] = None
+    threat_codename['finding'] = dict()
+    threat_codename['new_finding'] = dict()
     current_ip = 'No IP'
     for finding in asset_findings:
         # Search 'Threat codename' finding
-        if 'Threat codename: ' in finding['title']:
-            threat_codename['present'] = True
+        if 'Threat codename: ' in finding['title'] and (\
+            'id' not in threat_codename['finding'] or \
+            threat_codename['finding']['id'] < finding['id']):
             threat_codename['finding'] = finding
         # Search 'Current IP' finding
         if 'Current IP: ' in finding['title']:
@@ -359,18 +360,15 @@ def update_current_threat(asset, ct_findings, test_only=False):
     for ct_asset_id in ct_findings:
         for finding in ct_findings[ct_asset_id]:
             if 'Threat codename: ' in finding['title'] \
-                and '({})'.format(current_ip) in finding['title']:
-                if threat_codename['new_finding'] is None:
-                    threat_codename['new_finding'] = finding
-                else:
-                    updated_at = parse(finding['updated_at'])
-                    updated_at_new = parse(threat_codename['new_finding']['updated_at'])
-                    if updated_at > updated_at_new:
-                        threat_codename['new_finding'] = finding
+                and '({})'.format(current_ip) in finding['title'] \
+                and ( \
+                    'id' not in threat_codename['new_finding'] or \
+                    threat_codename['new_finding']['id'] < finding['id']):
+                threat_codename['new_finding'] = finding
 
     # New threat
-    if not threat_codename['present'] \
-        and threat_codename['new_finding'] is None \
+    if not threat_codename['finding'] \
+        and not threat_codename['new_finding'] \
         and current_ip != 'No IP':
         codename = generate_random_codename(current_ip)
         LOGGER.warning('New threat : "Threat codename: %s (%s)" for %s', codename, current_ip, asset['name'])
@@ -383,8 +381,8 @@ def update_current_threat(asset, ct_findings, test_only=False):
         add_finding(asset, 'Threat codename: {} ({})'.format(codename, current_ip), 'high', test_only=test_only)
 
     # New asset in existing threat
-    elif not threat_codename['present'] \
-        and threat_codename['new_finding'] is not None \
+    elif not threat_codename['finding'] \
+        and threat_codename['new_finding'] \
         and current_ip != 'No IP':
         LOGGER.warning('New asset in existing threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
         slack_alert('New asset in existing threat', threat_codename['new_finding']['title'], asset, test_only=test_only)
@@ -396,8 +394,8 @@ def update_current_threat(asset, ct_findings, test_only=False):
         add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'], test_only=test_only)
 
     # Rename current threat, only if different
-    elif threat_codename['present'] \
-        and threat_codename['new_finding'] is not None \
+    elif threat_codename['finding'] \
+        and threat_codename['new_finding'] \
         and current_ip != 'No IP' \
         and threat_codename['new_finding']['asset'] != asset['id'] \
         and (threat_codename['new_finding']['title'] != threat_codename['finding']['title']\
@@ -405,7 +403,7 @@ def update_current_threat(asset, ct_findings, test_only=False):
         LOGGER.warning('Rename current threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
         slack_alert('Rename current threat', threat_codename['new_finding']['title'], asset, criticity='info', test_only=test_only)
         for i, finding in enumerate(ct_findings[asset['id']]):
-            if 'Threat codename' in finding['title']:
+            if 'id' in finding and finding['id'] == threat_codename['finding']['id']:
                 ct_findings[asset['id']][i] = {
                     'severity': threat_codename['new_finding']['severity'],
                     'title': threat_codename['new_finding']['title'],
@@ -421,14 +419,14 @@ def update_threat(asset, asset_findings, ct_findings, test_only=False):
     This function updates the threat of Base and Archived assets
     """
     threat_codename = dict()
-    threat_codename['present'] = False
-    threat_codename['finding'] = None
-    threat_codename['new_finding'] = None
+    threat_codename['finding'] = dict()
+    threat_codename['new_finding'] = dict()
     current_ip = 'No IP'
     for finding in asset_findings:
         # Search 'Threat codename' finding
-        if 'Threat codename: ' in finding['title']:
-            threat_codename['present'] = True
+        if 'Threat codename: ' in finding['title'] and (\
+            'id' not in threat_codename['finding'] or \
+            threat_codename['finding']['id'] < finding['id']):
             threat_codename['finding'] = finding
         # Search 'Current IP' finding
         if 'Current IP: ' in finding['title']:
@@ -440,26 +438,23 @@ def update_threat(asset, asset_findings, ct_findings, test_only=False):
     for ct_asset_id in ct_findings:
         for finding in ct_findings[ct_asset_id]:
             if 'Threat codename: ' in finding['title'] \
-                and '({})'.format(current_ip) in finding['title']:
-                if threat_codename['new_finding'] is None:
-                    threat_codename['new_finding'] = finding
-                else:
-                    updated_at = parse(finding['updated_at'])
-                    updated_at_new = parse(threat_codename['new_finding']['updated_at'])
-                    if updated_at > updated_at_new:
-                        threat_codename['new_finding'] = finding
+                and '({})'.format(current_ip) in finding['title'] \
+                and ( \
+                    'id' not in threat_codename['new_finding'] or \
+                    threat_codename['new_finding']['id'] < finding['id']):
+                threat_codename['new_finding'] = finding
 
     # New asset in existing threat
-    if not threat_codename['present'] \
-        and threat_codename['new_finding'] is not None \
+    if not threat_codename['finding'] \
+        and threat_codename['new_finding'] \
         and current_ip != 'No IP':
         LOGGER.warning('New asset in existing threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
         slack_alert('New asset in existing threat', threat_codename['new_finding']['title'], asset, test_only=test_only)
         add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'], test_only=test_only)
 
     # Rename current threat, only if different
-    elif threat_codename['present'] \
-        and threat_codename['new_finding'] is not None \
+    elif threat_codename['finding'] \
+        and threat_codename['new_finding'] \
         and current_ip != 'No IP' \
         and threat_codename['new_finding']['asset'] != asset['id'] \
         and (threat_codename['new_finding']['title'] != threat_codename['finding']['title'] \
