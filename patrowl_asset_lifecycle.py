@@ -28,7 +28,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.3.0'
+VERSION = '1.3.1'
 
 PATROWL_API = PatrowlManagerApi(
     url=settings.PATROWL_PRIVATE_ENDPOINT,
@@ -47,6 +47,7 @@ COLOR_MAPPING = {
     'low': '#4287f5',
     'medium': '#f5a742',
     'high': '#b32b2b',
+    'critical': '#b32b2b',
 }
 
 NOW = datetime.now()
@@ -148,12 +149,31 @@ def slack_alert(asset, asset_type, asset_destination, criticity='high', test_onl
     payload['icon_emoji'] = settings.PAL_SLACK_ICON_EMOJI
 
     attachments = dict()
-    attachments['pretext'] = '{} threat move to {}'.format(asset_type, asset_destination)
-    attachments['fields'] = []
     attachments['color'] = COLOR_MAPPING[criticity]
-
-    attachments['text'] = safe_url(asset['name'])
-    attachments['fields'].append({'title': 'Patrowl asset link', 'value': '{}/assets/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, asset['id'])})
+    attachments['blocks'] = [
+        {
+            "type": "section",
+            "text": {
+                "type": "mrkdwn",
+                "text": "*{} threat move to {}*\n{}".format(asset_type, asset_destination, safe_url(asset['name']))
+                }
+        },
+        {
+            "type": "actions",
+            "elements": [
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "Patrowl Asset"
+                    },
+                    "style": "primary",
+                    "url": '{}/assets/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, asset['id'])
+                }
+            ]
+        }
+    ]
 
     payload['attachments'] = [attachments]
 

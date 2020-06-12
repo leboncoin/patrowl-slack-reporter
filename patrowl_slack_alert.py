@@ -24,7 +24,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '2.2.1'
+VERSION = '2.4.1'
 
 WARNINGS_TYPE_BLACKLIST = [
     'certstream_report',
@@ -36,6 +36,7 @@ COLOR_MAPPING = {
     'low': '#4287f5',
     'medium': '#f5a742',
     'high': '#b32b2b',
+    'critical': '#b32b2b',
 }
 
 PATROWL_API = PatrowlManagerApi(
@@ -83,15 +84,29 @@ def get_new_findings(assets, severities):
     Returns the report of new findings
     """
     report = dict()
+    assets_update_list = list()
     for asset in assets:
+        asset['is_for_sale'] = False
+        asset['current_ip'] = 'No IP'
         for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
+            if 'Domain for sale: ' in finding:
+                asset['is_for_sale'] = finding['title'].replace('Domain for sale: ', '') == 'True'
+            if 'Current IP: ' in finding['title']:
+                asset['current_ip'] = finding['title'].split('Current IP: ', 1)[1]
+
             if 'status' in finding and finding['status'] == 'new' \
                 and finding['severity'] in severities \
                 and finding['type'] not in WARNINGS_TYPE_BLACKLIST:
                 report[finding['id']] = finding
+                assets_update_list.append(asset)
+
+    for (_, data) in report.items():
+        for asset in assets_update_list:
+            if asset['name'] == data['asset_name']:
+                report[data['id']]['is_for_sale'] = asset['is_for_sale']
+                report[data['id']]['current_ip'] = asset['current_ip']
 
     LOGGER.warning('Found %s new findings.', len(report))
-
     return report
 
 def gen_eyewitness_diff(links):
@@ -130,30 +145,137 @@ def slack_alert(report, object_type):
         payload['icon_emoji'] = settings.PSA_SLACK_ICON_EMOJI
 
         attachments = dict()
-        attachments['pretext'] = 'New {} identified'.format(object_type)
-        attachments['fields'] = []
-        attachments['color'] = COLOR_MAPPING['info']
+        severity = 'info'
+        if 'severity' in data:
+            severity = data['severity']
 
+        attachments['color'] = COLOR_MAPPING[severity]
+
+        attachments['blocks'] = list()
+
+        # First section: Title
         if object_type == 'asset':
-            attachments['text'] = safe_url(data['name'])
-            attachments['fields'].append({'title': 'Created At', 'value': data['created_at']})
-            attachments['fields'].append({'title': 'Patrowl asset link', 'value': '{}/assets/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, data['id'])})
+            attachments['blocks'].append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*New asset identified*\n{}".format(safe_url(data['name']))
+                    }
+                })
         elif object_type == 'finding':
-            attachments['text'] = safe_url(data['title'])
-            attachments['fields'].append({'title': 'Asset Name', 'value': safe_url(data['asset_name'])})
-            attachments['fields'].append({'title': 'Severity', 'value': data['severity']})
-            if data['links']:
-                if data['type'] == 'eyewitness_screenshot_diff':
-                    attachments['fields'].append({'title': 'Links', 'value': gen_eyewitness_diff(data['links'])})
-                else:
-                    attachments['fields'].append({'title': 'Links', 'value': ' '.join(data['links'])})
-            if data['severity'] in COLOR_MAPPING:
-                attachments['color'] = COLOR_MAPPING[data['severity']]
-            attachments['fields'].append({'title': 'Patrowl finding link', 'value': '{}/findings/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, data['id'])})
-            attachments['fields'].append({'title': 'Patrowl asset link', 'value': '{}/assets/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, data['asset'])})
+            attachments['blocks'].append({
+                "type": "section",
+                "text": {
+                    "type": "mrkdwn",
+                    "text": "*New finding identified*\n{}".format(safe_url(data['title']))
+                    }
+                })
+
+        # Second section: Description
+        if object_type == 'asset':
+            attachments['blocks'].append({
+                "type": "section",
+                "fields": [
+                    {
+                        "type": "mrkdwn",
+                        "text": "*Created At:*\n{}".format(data['created_at'])
+                    }
+                    ]
+                })
+        elif object_type == 'finding':
+            fields = [
+                {
+                    "type": "mrkdwn",
+                    "text": "*Asset Name:*\n{}".format(safe_url(data['asset_name']))
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": "*Severity:*\n{}".format(data['severity'])
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": "*Asset Current IP:*\n{}".format(safe_url(data['current_ip']))
+                },
+                {
+                    "type": "mrkdwn",
+                    "text": "*Domain for sale:*\n{}".format(data['is_for_sale'])
+                }
+            ]
+            if 'links' in data and data['links']:
+                if data['type'] != 'eyewitness_screenshot_diff':
+                    for i, link in enumerate(data['links']):
+                        fields.append({
+                            "type": "mrkdwn",
+                            "text": "*Additionnal link:*\n<{}|{}>".format(link, 'Link #'+str(i))
+                        })
+
+            attachments['blocks'].append({
+                "type": "section",
+                "fields": fields
+                })
+
+        # Third section: Divider
+        attachments['blocks'].append({
+            "type": "divider"
+        })
+
+        # Fourth section: Button
+        if object_type == 'asset':
+            attachments['blocks'].append({
+                "type": "actions",
+                "elements": [
+                    {
+                        "type": "button",
+                        "text": {
+                            "type": "plain_text",
+                            "emoji": True,
+                            "text": "Patrowl Asset"
+                        },
+                        "style": "primary",
+                        "url": '{}/assets/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, data['id'])
+                    }
+                ]
+            })
+        elif object_type == 'finding':
+            elements = list()
+            if data['type'] == 'eyewitness_screenshot_diff':
+                elements.append({
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "Show screenshot diff"
+                    },
+                    "style": "primary",
+                    "url": gen_eyewitness_diff(data['links'])
+                })
+            elements.append(
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "Patrowl finding"
+                    },
+                    "url": '{}/findings/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, data['id'])
+                })
+            elements.append(
+                {
+                    "type": "button",
+                    "text": {
+                        "type": "plain_text",
+                        "emoji": True,
+                        "text": "Patrowl asset"
+                    },
+                    "url": '{}/assets/details/{}'.format(settings.PATROWL_PUBLIC_ENDPOINT, data['asset'])
+                })
+            attachments['blocks'].append({
+                "type": "actions",
+                "elements": elements
+            })
+
 
         payload['attachments'] = [attachments]
-
         response = SESSION.post(settings.SLACK_WEBHOOK, data=json.dumps(payload))
 
         if response.ok and object_type == 'asset':
@@ -164,4 +286,4 @@ def slack_alert(report, object_type):
 if __name__ == '__main__':
     ASSETS = get_assets_from_groups()
     slack_alert(get_new_assets(ASSETS), 'asset')
-    slack_alert(get_new_findings(ASSETS, ['medium', 'high']), 'finding')
+    slack_alert(get_new_findings(ASSETS, ['medium', 'high', 'critical']), 'finding')
