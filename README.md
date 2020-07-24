@@ -64,3 +64,9 @@ python3 patrowl_asset_lifecycle.py
 
 python3 patrowl_asset_tagger.py
 ```
+
+# License
+Licensed under the [Apache License](https://github.com/leboncoin/patrowl-slack-reporter/blob/master/LICENSE), Version 2.0 (the "License").
+
+# Copyright
+Copyright 2020 Leboncoin

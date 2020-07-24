@@ -2,9 +2,9 @@
 """
 Patrowl Scan Scheduler
 
-Copyright (c) 2020 Nicolas Beguier
+Copyright 2020 Leboncoin
 Licensed under the Apache License
-Written by Nicolas BEGUIER (nicolas_beguier@hotmail.com)
+Written by Nicolas BEGUIER (nicolas.beguier@adevinta.com)
 """
 
 # Standard library imports
