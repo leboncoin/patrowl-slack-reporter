@@ -32,7 +32,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '1.7.1'
+VERSION = '1.7.3'
 
 logging.basicConfig()
 LOGGER = logging.getLogger('patrowl-asset-tagger')
@@ -263,6 +263,7 @@ def update_for_sale_finding(asset, ct_findings, test_only=False):
     for i, finding in enumerate(ct_findings[asset['id']]):
         if 'Domain for sale' in finding['title']:
             ct_findings[asset['id']][i] = {
+                'id': 999999999,
                 'severity': current_for_sale_finding['severity'],
                 'title': current_for_sale_finding['title'],
                 'updated_at': current_for_sale_finding['updated_at'],
@@ -365,7 +366,6 @@ def update_current_threat(asset, ct_findings, test_only=False):
                     'id' not in threat_codename['new_finding'] or \
                     threat_codename['new_finding']['id'] < finding['id']):
                 threat_codename['new_finding'] = finding
-
     # New threat
     if not threat_codename['finding'] \
         and not threat_codename['new_finding'] \
@@ -374,6 +374,7 @@ def update_current_threat(asset, ct_findings, test_only=False):
         LOGGER.warning('New threat : "Threat codename: %s (%s)" for %s', codename, current_ip, asset['name'])
         slack_alert('New threat', 'Threat codename: {} ({})'.format(codename, current_ip), asset, test_only=test_only)
         ct_findings[asset['id']].append({
+            'id': 999999999,
             'severity': 'high',
             'title': 'Threat codename: {} ({})'.format(codename, current_ip),
             'updated_at': datetime.now().isoformat(),
@@ -387,6 +388,7 @@ def update_current_threat(asset, ct_findings, test_only=False):
         LOGGER.warning('New asset in existing threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
         slack_alert('New asset in existing threat', threat_codename['new_finding']['title'], asset, test_only=test_only)
         ct_findings[asset['id']].append({
+            'id': 999999999,
             'severity': threat_codename['new_finding']['severity'],
             'title': threat_codename['new_finding']['title'],
             'updated_at': threat_codename['new_finding']['updated_at'],
@@ -401,10 +403,10 @@ def update_current_threat(asset, ct_findings, test_only=False):
         and (threat_codename['new_finding']['title'] != threat_codename['finding']['title']\
             or threat_codename['new_finding']['severity'] != threat_codename['finding']['severity']):
         LOGGER.warning('Rename current threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
-        slack_alert('Rename current threat', threat_codename['new_finding']['title'], asset, criticity='info', test_only=test_only)
         for i, finding in enumerate(ct_findings[asset['id']]):
             if 'id' in finding and finding['id'] == threat_codename['finding']['id']:
                 ct_findings[asset['id']][i] = {
+                    'id': 999999999,
                     'severity': threat_codename['new_finding']['severity'],
                     'title': threat_codename['new_finding']['title'],
                     'updated_at': threat_codename['new_finding']['updated_at'],
@@ -460,7 +462,6 @@ def update_threat(asset, asset_findings, ct_findings, test_only=False):
         and (threat_codename['new_finding']['title'] != threat_codename['finding']['title'] \
             or threat_codename['new_finding']['severity'] != threat_codename['finding']['severity']):
         LOGGER.warning('Rename current threat : "%s" for %s', threat_codename['new_finding']['title'], asset['name'])
-        slack_alert('Rename current threat', threat_codename['new_finding']['title'], asset, criticity='info', test_only=test_only)
         delete_finding(threat_codename['finding']['id'], test_only=test_only)
         add_finding(asset, threat_codename['new_finding']['title'], threat_codename['new_finding']['severity'], test_only=test_only)
 
