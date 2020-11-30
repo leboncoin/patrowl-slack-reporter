@@ -10,6 +10,7 @@ Written by Nicolas BEGUIER (nicolas.beguier@adevinta.com)
 # Standard library imports
 import json
 import logging
+import re
 
 # Third party library imports
 from patrowl4py.api import PatrowlManagerApi
@@ -24,7 +25,7 @@ import settings
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-VERSION = '2.4.1'
+VERSION = '2.6.0'
 
 WARNINGS_TYPE_BLACKLIST = [
     'certstream_report',
@@ -88,6 +89,8 @@ def get_new_findings(assets, severities):
     for asset in assets:
         asset['is_for_sale'] = False
         asset['current_ip'] = 'No IP'
+        asset['first_screenshot'] = None
+        asset['has_multiple_screenshots'] = False
         for finding in PATROWL_API.get_asset_findings_by_id(asset['id']):
             if 'Domain for sale: ' in finding:
                 asset['is_for_sale'] = finding['title'].replace('Domain for sale: ', '') == 'True'
@@ -99,6 +102,19 @@ def get_new_findings(assets, severities):
                 and finding['type'] not in WARNINGS_TYPE_BLACKLIST:
                 report[finding['id']] = finding
                 assets_update_list.append(asset)
+            # Looking for the first screenshot
+            elif finding['type'] in ['eyewitness_screenshot']:
+                if 'status' in finding and finding['status'] != 'new':
+                    asset['has_multiple_screenshots'] = True
+                if not asset['has_multiple_screenshots'] and asset['first_screenshot'] is None:
+                    asset['first_screenshot'] = finding
+                elif not asset['has_multiple_screenshots'] and asset['first_screenshot'] is not None:
+                    asset['has_multiple_screenshots'] = True
+
+        # This is the case when there is only one screenshot
+        if not asset['has_multiple_screenshots'] and asset['first_screenshot'] is not None:
+            report[asset['first_screenshot']['id']] = asset['first_screenshot']
+            assets_update_list.append(asset)
 
     for (_, data) in report.items():
         for asset in assets_update_list:
@@ -191,14 +207,6 @@ def slack_alert(report, object_type):
                 {
                     "type": "mrkdwn",
                     "text": "*Severity:*\n{}".format(data['severity'])
-                },
-                {
-                    "type": "mrkdwn",
-                    "text": "*Asset Current IP:*\n{}".format(safe_url(data['current_ip']))
-                },
-                {
-                    "type": "mrkdwn",
-                    "text": "*Domain for sale:*\n{}".format(data['is_for_sale'])
                 }
             ]
             if 'links' in data and data['links']:
@@ -208,6 +216,13 @@ def slack_alert(report, object_type):
                             "type": "mrkdwn",
                             "text": "*Additionnal link:*\n<{}|{}>".format(link, 'Link #'+str(i))
                         })
+            if data['type'] == 'aws_tower':
+                dns_record = re.findall('"DnsRecord": "([a-zA-Z0-9\.\-_]+)"', data['description'])
+                if dns_record:
+                    fields.append({
+                        "type": "mrkdwn",
+                        "text": f"*Dns Record:*\n<https://{dns_record[0]}|{dns_record[0]}>"
+                    })
 
             attachments['blocks'].append({
                 "type": "section",
