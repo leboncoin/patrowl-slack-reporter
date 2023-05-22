@@ -2,4 +2,4 @@ dnspython==1.16.0
 Patrowl4py==1.0.5
 python-dateutil==2.7.3
 pytz==2019.3
-requests==2.22.0
+requests==2.31.0
